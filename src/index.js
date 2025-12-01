@@ -7,23 +7,50 @@ import { getProcessedImage } from "./image-processor.js";
 const PPI = 96;
 const PX_TO_INCH = 1 / PPI;
 
-export async function exportToPptx(elementOrSelector, options = {}) {
-  const root = typeof elementOrSelector === "string" 
-    ? document.querySelector(elementOrSelector) 
-    : elementOrSelector;
-
-  if (!root) throw new Error("Root element not found");
-
+/**
+ * Main export function. Accepts single element or an array.
+ * @param {HTMLElement | string | Array<HTMLElement | string>} target - The root element(s) to convert.
+ * @param {Object} options - { fileName: string }
+ */
+export async function exportToPptx(target, options = {}) {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_16x9";
-  const slide = pptx.addSlide();
 
+  // Standardize input to an array
+  const elements = Array.isArray(target) ? target : [target];
+
+  for (const el of elements) {
+      const root = typeof el === "string" ? document.querySelector(el) : el;
+      if (!root) {
+          console.warn("Element not found, skipping slide:", el);
+          continue;
+      }
+      
+      const slide = pptx.addSlide();
+      await processSlide(root, slide, pptx);
+  }
+  
+  const fileName = options.fileName || "export.pptx";
+  pptx.writeFile({ fileName });
+}
+
+/**
+ * Worker function to process a single DOM element into a single PPTX slide.
+ * @param {HTMLElement} root - The root element for this slide.
+ * @param {PptxGenJS.Slide} slide - The PPTX slide object to add content to.
+ * @param {PptxGenJS} pptx - The main PPTX instance.
+ */
+async function processSlide(root, slide, pptx) {
   const rootRect = root.getBoundingClientRect();
   const PPTX_WIDTH_IN = 10;
   const PPTX_HEIGHT_IN = 5.625;
+
   const contentWidthIn = rootRect.width * PX_TO_INCH;
   const contentHeightIn = rootRect.height * PX_TO_INCH;
-  const scale = Math.min(PPTX_WIDTH_IN / contentWidthIn, PPTX_HEIGHT_IN / contentHeightIn);
+  const scale = Math.min(
+    PPTX_WIDTH_IN / contentWidthIn,
+    PPTX_HEIGHT_IN / contentHeightIn
+  );
 
   const layoutConfig = {
     rootX: rootRect.x, rootY: rootRect.y, scale: scale,
@@ -56,9 +83,6 @@ export async function exportToPptx(elementOrSelector, options = {}) {
       if (item.type === 'image') slide.addImage(item.options);
       if (item.type === 'text') slide.addText(item.textParts, item.options);
   }
-  
-  const fileName = options.fileName || "export.pptx";
-  pptx.writeFile({ fileName });
 }
 
 async function createRenderItem(node, config, domOrder, pptx) {
@@ -75,7 +99,6 @@ async function createRenderItem(node, config, domOrder, pptx) {
   
   const widthPx = node.offsetWidth || rect.width;
   const heightPx = node.offsetHeight || rect.height;
-
   const unrotatedW = widthPx * PX_TO_INCH * config.scale;
   const unrotatedH = heightPx * PX_TO_INCH * config.scale;
   const centerX = rect.left + rect.width / 2;
@@ -88,7 +111,6 @@ async function createRenderItem(node, config, domOrder, pptx) {
 
   const items = [];
 
-  // --- SVG & IMG HANDLERS ---
   if (node.nodeName.toUpperCase() === 'SVG') {
       const pngData = await svgToPng(node);
       if (pngData) items.push({ type: 'image', zIndex, domOrder, options: { data: pngData, x, y, w, h, rotate: rotation } });
@@ -105,7 +127,6 @@ async function createRenderItem(node, config, domOrder, pptx) {
       return { items, stopRecursion: true };
   }
 
-  // --- PREPARE STYLES ---
   const bgColorObj = parseColor(style.backgroundColor);
   const bgClip = style.webkitBackgroundClip || style.backgroundClip;
   const isBgClipText = bgClip === 'text';
@@ -124,19 +145,15 @@ async function createRenderItem(node, config, domOrder, pptx) {
   if (imgChild) {
       const childW = imgChild.offsetWidth || imgChild.getBoundingClientRect().width;
       const childH = imgChild.offsetHeight || imgChild.getBoundingClientRect().height;
-      if (childW >= widthPx - 2 && childH >= heightPx - 2) {
-          isImageWrapper = true;
-      }
+      if (childW >= widthPx - 2 && childH >= heightPx - 2) isImageWrapper = true;
   }
 
-  // --- TEXT EXTRACTION ---
   let textPayload = null;
   const isText = isTextContainer(node);
   
   if (isText) {
       const textParts = [];
       const isList = style.display === 'list-item';
-      
       if (isList) {
           const fontSizePt = parseFloat(style.fontSize) * 0.75 * config.scale;
           const bulletShift = (parseFloat(style.fontSize) || 16) * PX_TO_INCH * config.scale * 1.5;
@@ -163,26 +180,21 @@ async function createRenderItem(node, config, domOrder, pptx) {
       if (textParts.length > 0) {
           let align = style.textAlign || "left";
           if (align === "start") align = "left"; if (align === "end") align = "right";
-          
           let valign = "top";
-          // Standard Flex Alignment
           if (style.alignItems === "center") valign = "middle"; 
           if (style.justifyContent === "center" && style.display.includes("flex")) align = "center";
           
-          // FIX: Improved Alignment Detection for "Button" Badges
-          // If Top/Bottom Padding is equal, and it's a "Shape" (has bg), default to Middle
           const pt = parseFloat(style.paddingTop) || 0;
           const pb = parseFloat(style.paddingBottom) || 0;
-          if (Math.abs(pt - pb) < 2 && bgColorObj.hex) {
-              valign = "middle";
-          }
+          if (Math.abs(pt - pb) < 2 && bgColorObj.hex) valign = "middle";
 
-          const padding = getPadding(style, config.scale);
+          let padding = getPadding(style, config.scale);
+          if (align === "center" && valign === "middle") padding = [0, 0, 0, 0];
+
           textPayload = { text: textParts, align, valign, inset: padding };
       }
   }
 
-  // --- RENDER LOGIC ---
   if (hasGradient || (softEdge && bgColorObj.hex && !isImageWrapper)) {
       let bgData = null;
       let padIn = 0;
@@ -214,7 +226,6 @@ async function createRenderItem(node, config, domOrder, pptx) {
   else if ((bgColorObj.hex && !isImageWrapper) || hasBorder || hasShadow || textPayload) {
       const finalAlpha = elementOpacity * bgColorObj.opacity;
       const transparency = (1 - finalAlpha) * 100;
-
       const shapeOpts = {
           x, y, w, h, rotate: rotation,
           fill: (bgColorObj.hex && !isImageWrapper) ? { color: bgColorObj.hex, transparency: transparency } : { type: 'none' },

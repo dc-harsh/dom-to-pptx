@@ -2,7 +2,7 @@ node_modules
 .DS_Store
 .git
 test-playground
-ins.md
 .env
 .vscode
-dist
+ins.md
+code_context.txt
