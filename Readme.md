@@ -71,7 +71,7 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 For direct inclusion in a web page using a `<script>` tag, you can use the UMD bundle:
 
 ```html
-<script src="./node_modules/dom-to-pptx/dist/dom-to-pptx.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dom-to-pptx@latest/dist/dom-to-pptx.min.js"></script>
 <script>
   document.getElementById('download-btn').addEventListener('click', async () => {
     // The library is available globally as `domToPptx`
