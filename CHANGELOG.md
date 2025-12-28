@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [1.1.0] - 2025-12-29
 
 ### Added
-- **Automatic Font Discovery:** The library now automatically scans the DOM for used font families, extracts their `@font-face` URLs from the document stylesheets, and embeds them into the PPTX file.
+- **Automatic Font Discovery:** The library now automatically scans the DOM for used font families, extracts their `@font-face` URLs from the document stylesheets, and embeds them into the PPTX file; Addresses [#4].
 - **Custom Font Embedding:** Added support for manually embedding web fonts (TTF, WOFF, OTF).
 - **Font Configuration:** Added `fonts` option for manual font URLs and `autoEmbedFonts` (default: `true`) to toggle automatic detection.
 
