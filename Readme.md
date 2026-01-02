@@ -1,24 +1,31 @@
 # dom-to-pptx
 
-**The High-Fidelity HTML to PowerPoint Converter (v1.1.0)**
+**The High-Fidelity HTML to PowerPoint Converter (v1.1.1)**
 
 Most HTML-to-PPTX libraries fail when faced with modern web design. They break on gradients, misalign text, ignore rounded corners, or simply take a screenshot (which isn't editable).
 
 **dom-to-pptx** is different. It is a **Coordinate Scraper & Style Engine** that traverses your DOM, calculates the exact computed styles of every element (Flexbox/Grid positions, complex gradients, shadows), and mathematically maps them to native PowerPoint shapes and text boxes. The result is a fully editable, vector-sharp presentation that looks exactly like your web view.
 
+### 🛠️ Fixes in v1.1.1
+
+- Fix list rendering, shape positioning, and text wrapping issues.
+
 ## Features
 
 ### 🚀 New in v1.1.0
+
 - **Smart Font Embedding:** The library **automatically detects** the fonts used in your HTML, finds their URLs in your CSS, and embeds them into the PPTX. Your slides will look identical on any computer, even if the user doesn't have the fonts installed.
 - **Enhanced Icon Support:** Flawless rendering of FontAwesome, Material Icons, and SVG-based icon libraries (including gradient text icons).
 
 ### 🎨 Advanced Visual Fidelity
+
 - **Complex Gradients:** Includes a built-in CSS Gradient Parser that converts `linear-gradient` strings (with multiple stops, specific angles like `45deg`, and transparency) into vector SVGs.
 - **Mathematically Accurate Shadows:** Converts CSS Cartesian shadows (`x`, `y`, `blur`) into PowerPoint's Polar coordinate system (`angle`, `distance`) for 1:1 depth matching.
 - **Anti-Halo Image Processing:** Uses off-screen HTML5 Canvas with `source-in` composite masking to render rounded images without the ugly white "halo" artifacts found in other libraries.
 - **Soft Edges/Blurs:** Accurately translates CSS `filter: blur()` into PowerPoint's soft-edge effects, preserving visual depth.
 
 ### 📐 Smart Layout & Typography
+
 - **Auto-Scaling Engine:** Build your slide in HTML at **1920x1080** (or any aspect ratio). The library automatically calculates the scaling factor to fit it perfectly into a standard 16:9 PowerPoint slide.
 - **Rich Text Blocks:** Handles mixed-style text (e.g., **bold** spans inside a normal paragraph).
 - **Text Transformations:** Supports CSS `text-transform: uppercase/lowercase` and `letter-spacing`.
@@ -61,15 +68,15 @@ If you are using external fonts (like Google Fonts) that are hosted on a server 
 ```javascript
 import { exportToPptx } from 'dom-to-pptx';
 
-await exportToPptx('#slide-container', { 
-    fileName: 'report.pptx',
-    // Optional: Only needed if auto-detection fails due to CORS
-    fonts: [
-       { 
-         name: 'Roboto', 
-         url: 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff2' 
-       }
-    ]
+await exportToPptx('#slide-container', {
+  fileName: 'report.pptx',
+  // Optional: Only needed if auto-detection fails due to CORS
+  fonts: [
+    {
+      name: 'Roboto',
+      url: 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff2',
+    },
+  ],
 });
 ```
 
@@ -98,8 +105,8 @@ You can use `dom-to-pptx` directly via CDN. The bundle includes all dependencies
 <script>
   document.getElementById('export-btn').addEventListener('click', async () => {
     // The library is available globally as `domToPptx`
-    await domToPptx.exportToPptx('#slide-container', { 
-      fileName: 'slide.pptx' 
+    await domToPptx.exportToPptx('#slide-container', {
+      fileName: 'slide.pptx',
     });
   });
 </script>
@@ -117,13 +124,9 @@ We recommend building your slide container at **1920x1080px**. The library will 
   class="slide w-[1000px] h-[562px] bg-white rounded-xl overflow-hidden relative shadow-2xl shadow-black/50 flex"
 >
   <!-- Left Sidebar -->
-  <div
-    class="w-1/3 bg-slate-900 relative overflow-hidden flex flex-col p-10 justify-between"
-  >
+  <div class="w-1/3 bg-slate-900 relative overflow-hidden flex flex-col p-10 justify-between">
     <!-- Decorative gradients -->
-    <div
-      class="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none"
-    >
+    <div class="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none">
       <div
         class="absolute -top-20 -left-20 w-64 h-64 bg-purple-600 rounded-full blur-3xl mix-blend-screen"
       ></div>
@@ -135,30 +138,22 @@ We recommend building your slide container at **1920x1080px**. The library will 
       <div
         class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 backdrop-blur-md mb-6"
       >
-        <span
-          class="w-2 h-2 rounded-full bg-green-400 animate-pulse"
-        ></span>
-        <span class="text-xs font-medium text-slate-300 tracking-wider"
-          >LIVE DATA</span
-        >
+        <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+        <span class="text-xs font-medium text-slate-300 tracking-wider">LIVE DATA</span>
       </div>
       <h2 class="text-4xl font-bold text-white leading-tight mb-4">
         Quarterly <br />
-        <span
-          class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400"
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400"
           >Performance</span
         >
       </h2>
       <p class="text-slate-400 leading-relaxed">
-        Visualizing the impact of high-fidelity DOM conversion on
-        presentation workflows.
+        Visualizing the impact of high-fidelity DOM conversion on presentation workflows.
       </p>
     </div>
     <!-- Feature List (Flexbox/Grid test) -->
     <div class="relative z-10 space-y-4">
-      <div
-        class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/5"
-      >
+      <div class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/5">
         <div
           class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold"
         >
@@ -166,9 +161,7 @@ We recommend building your slide container at **1920x1080px**. The library will 
         </div>
         <div class="text-sm text-slate-300">Pixel-perfect Shadows</div>
       </div>
-      <div
-        class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/5"
-      >
+      <div class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/5">
         <div
           class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold"
         >
@@ -183,9 +176,7 @@ We recommend building your slide container at **1920x1080px**. The library will 
     <!-- Header -->
     <div class="flex justify-between items-start mb-10">
       <div>
-        <h3 class="text-slate-800 font-bold text-xl">
-          Revenue Breakdown
-        </h3>
+        <h3 class="text-slate-800 font-bold text-xl">Revenue Breakdown</h3>
         <p class="text-slate-500 text-sm">Fiscal Year 2024</p>
       </div>
       <div class="flex -space-x-2">
@@ -214,21 +205,10 @@ We recommend building your slide container at **1920x1080px**. The library will 
         class="bg-white p-5 rounded-xl complex-shadow border border-slate-100 relative overflow-hidden group"
       >
         <div class="relative z-10">
-          <p
-            class="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1"
-          >
-            Total Sales
-          </p>
+          <p class="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1">Total Sales</p>
           <h4 class="text-3xl font-bold text-slate-800">$124,500</h4>
-          <div
-            class="mt-3 flex items-center text-xs font-semibold text-green-600"
-          >
-            <svg
-              class="w-3 h-3 mr-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+          <div class="mt-3 flex items-center text-xs font-semibold text-green-600">
+            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -247,17 +227,10 @@ We recommend building your slide container at **1920x1080px**. The library will 
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         "
       >
-        <p
-          class="text-xs font-bold text-white/80 uppercase tracking-wider mb-1"
-        >
-          Active Users
-        </p>
+        <p class="text-xs font-bold text-white/80 uppercase tracking-wider mb-1">Active Users</p>
         <h4 class="text-3xl font-bold text-white">45.2k</h4>
         <div class="mt-3 w-full bg-black/20 rounded-full h-1.5">
-          <div
-            class="bg-white/90 h-1.5 rounded-full"
-            style="width: 70%"
-          ></div>
+          <div class="bg-white/90 h-1.5 rounded-full" style="width: 70%"></div>
         </div>
       </div>
     </div>
@@ -268,7 +241,8 @@ We recommend building your slide container at **1920x1080px**. The library will 
         The
         <span class="font-bold text-indigo-600">Q3 projection</span>
         exceeds expectations due to the new
-        <span class="italic">optimization algorithm</span>. We observed a <strong class="text-indigo-700">240% increase</strong>
+        <span class="italic">optimization algorithm</span>. We observed a
+        <strong class="text-indigo-700">240% increase</strong>
         in processing speed across all nodes.
       </p>
     </div>
@@ -277,9 +251,7 @@ We recommend building your slide container at **1920x1080px**. The library will 
       class="absolute bottom-6 right-6 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-lg border border-slate-200 flex items-center gap-2"
     >
       <div class="w-2 h-2 rounded-full bg-red-500"></div>
-      <span class="text-xs font-bold text-slate-600 uppercase"
-        >Confidential</span
-      >
+      <span class="text-xs font-bold text-slate-600 uppercase">Confidential</span>
     </div>
   </div>
 </div>
@@ -296,19 +268,19 @@ We recommend building your slide container at **1920x1080px**. The library will 
 
 **Options Object:**
 
-| Key              | Type      | Default        | Description                                   |
-| :--------------- | :-------- | :------------- | :-------------------------------------------- |
-| `fileName`       | `string`  | `"export.pptx"` | The name of the downloaded file.              |
-| `autoEmbedFonts` | `boolean` | `true`         | Automatically detect and embed used fonts.    |
-| `fonts`          | `Array`   | `[]`           | Manual array of font objects: `{ name, url }`. |
+| Key              | Type      | Default         | Description                                    |
+| :--------------- | :-------- | :-------------- | :--------------------------------------------- |
+| `fileName`       | `string`  | `"export.pptx"` | The name of the downloaded file.               |
+| `autoEmbedFonts` | `boolean` | `true`          | Automatically detect and embed used fonts.     |
+| `fonts`          | `Array`   | `[]`            | Manual array of font objects: `{ name, url }`. |
 
 ## Important Notes
 
-1.  **Fonts & CORS:** 
-    *   **Automatic Embedding:** Works perfectly for local fonts and external fonts served with correct CORS headers. 
-    *   **Google Fonts:** For auto-detection to work with Google Fonts, you must add `crossorigin="anonymous"` to your link tag:
-        `<link href="https://fonts.googleapis.com/..." rel="stylesheet" crossorigin="anonymous">`
-    *   If a font cannot be accessed due to CORS, the library will log a warning and proceed without embedding it (PowerPoint will fallback to Arial).
+1.  **Fonts & CORS:**
+    - **Automatic Embedding:** Works perfectly for local fonts and external fonts served with correct CORS headers.
+    - **Google Fonts:** For auto-detection to work with Google Fonts, you must add `crossorigin="anonymous"` to your link tag:
+      `<link href="https://fonts.googleapis.com/..." rel="stylesheet" crossorigin="anonymous">`
+    - If a font cannot be accessed due to CORS, the library will log a warning and proceed without embedding it (PowerPoint will fallback to Arial).
 
 2.  **Layout System:** The library does not "read" Flexbox or Grid definitions directly. It measures the final `x, y, width, height` of every element relative to the slide root and places them absolutely. This ensures 100% visual accuracy regardless of the CSS layout method used.
 

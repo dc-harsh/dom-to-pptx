@@ -63,11 +63,11 @@ export class PPTXEmbedFonts {
     const xmlStr = await file.async('string');
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlStr, 'text/xml');
-    
+
     const types = doc.getElementsByTagName('Types')[0];
     const defaults = Array.from(doc.getElementsByTagName('Default'));
-    
-    const hasFntData = defaults.some(el => el.getAttribute('Extension') === 'fntdata');
+
+    const hasFntData = defaults.some((el) => el.getAttribute('Extension') === 'fntdata');
 
     if (!hasFntData) {
       const el = doc.createElement('Default');
@@ -97,7 +97,7 @@ export class PPTXEmbedFonts {
 
     if (!embeddedFontLst) {
       embeddedFontLst = doc.createElement('p:embeddedFontLst');
-      
+
       // Insert before defaultTextStyle or at end
       const defaultTextStyle = presentation.getElementsByTagName('p:defaultTextStyle')[0];
       if (defaultTextStyle) {
@@ -108,14 +108,15 @@ export class PPTXEmbedFonts {
     }
 
     // Add font references
-    this.fonts.forEach(font => {
+    this.fonts.forEach((font) => {
       // Check if already exists
-      const existing = Array.from(embeddedFontLst.getElementsByTagName('p:font'))
-        .find(node => node.getAttribute('typeface') === font.name);
+      const existing = Array.from(embeddedFontLst.getElementsByTagName('p:font')).find(
+        (node) => node.getAttribute('typeface') === font.name
+      );
 
       if (!existing) {
         const embedFont = doc.createElement('p:embeddedFont');
-        
+
         const fontNode = doc.createElement('p:font');
         fontNode.setAttribute('typeface', font.name);
         embedFont.appendChild(fontNode);
@@ -140,11 +141,14 @@ export class PPTXEmbedFonts {
     const doc = parser.parseFromString(xmlStr, 'text/xml');
     const relationships = doc.getElementsByTagName('Relationships')[0];
 
-    this.fonts.forEach(font => {
+    this.fonts.forEach((font) => {
       const rel = doc.createElement('Relationship');
       rel.setAttribute('Id', `rId${font.rid}`);
       rel.setAttribute('Target', `fonts/${font.rid}.fntdata`);
-      rel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/font');
+      rel.setAttribute(
+        'Type',
+        'http://schemas.openxmlformats.org/officeDocument/2006/relationships/font'
+      );
       relationships.appendChild(rel);
     });
 
@@ -152,7 +156,7 @@ export class PPTXEmbedFonts {
   }
 
   updateFontFiles() {
-    this.fonts.forEach(font => {
+    this.fonts.forEach((font) => {
       this.zip.file(`ppt/fonts/${font.rid}.fntdata`, font.data);
     });
   }

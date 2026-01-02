@@ -66,34 +66,37 @@ export async function exportToPptx(target, options = {}) {
     await processSlide(root, slide, pptx);
   }
 
-    // 3. Font Embedding Logic
+  // 3. Font Embedding Logic
   let finalBlob;
   let fontsToEmbed = options.fonts || [];
 
   if (options.autoEmbedFonts) {
     // A. Scan DOM for used font families
     const usedFamilies = getUsedFontFamilies(elements);
-    
+
     // B. Scan CSS for URLs matches
     const detectedFonts = await getAutoDetectedFonts(usedFamilies);
-    
+
     // C. Merge (Avoid duplicates)
-    const explicitNames = new Set(fontsToEmbed.map(f => f.name));
+    const explicitNames = new Set(fontsToEmbed.map((f) => f.name));
     for (const autoFont of detectedFonts) {
-        if (!explicitNames.has(autoFont.name)) {
-            fontsToEmbed.push(autoFont);
-        }
+      if (!explicitNames.has(autoFont.name)) {
+        fontsToEmbed.push(autoFont);
+      }
     }
-    
+
     if (detectedFonts.length > 0) {
-        console.log('Auto-detected fonts:', detectedFonts.map(f => f.name));
+      console.log(
+        'Auto-detected fonts:',
+        detectedFonts.map((f) => f.name)
+      );
     }
   }
 
   if (fontsToEmbed.length > 0) {
     // Generate initial PPTX
     const initialBlob = await pptx.write({ outputType: 'blob' });
-    
+
     // Load into Embedder
     const zip = await JSZip.loadAsync(initialBlob);
     const embedder = new PPTXEmbedFonts();
@@ -105,7 +108,7 @@ export async function exportToPptx(target, options = {}) {
         const response = await fetch(fontCfg.url);
         if (!response.ok) throw new Error(`Failed to fetch ${fontCfg.url}`);
         const buffer = await response.arrayBuffer();
-        
+
         // Infer type
         const ext = fontCfg.url.split('.').pop().split(/[?#]/)[0].toLowerCase();
         let type = 'ttf';
@@ -242,10 +245,6 @@ async function processSlide(root, slide, pptx) {
   }
 }
 
-/**
- * Optimized html2canvas wrapper
- * Now strictly captures the node itself, not the root.
- */
 /**
  * Optimized html2canvas wrapper
  * Includes fix for cropped icons by adjusting styles in the cloned document.
@@ -520,6 +519,9 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
       }
     }
 
+    const objectFit = style.objectFit || 'fill'; // default CSS behavior is fill
+    const objectPosition = style.objectPosition || '50% 50%';
+
     const item = {
       type: 'image',
       zIndex,
@@ -528,7 +530,14 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
     };
 
     const job = async () => {
-      const processed = await getProcessedImage(node.src, widthPx, heightPx, radii);
+      const processed = await getProcessedImage(
+        node.src,
+        widthPx,
+        heightPx,
+        radii,
+        objectFit,
+        objectPosition
+      );
       if (processed) item.options.data = processed;
       else item.skip = true;
     };
@@ -628,16 +637,45 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
     const isList = style.display === 'list-item';
     if (isList) {
       const fontSizePt = parseFloat(style.fontSize) * 0.75 * config.scale;
-      const bulletShift = (parseFloat(style.fontSize) || 16) * PX_TO_INCH * config.scale * 1.5;
-      x -= bulletShift;
-      w += bulletShift;
-      textParts.push({
-        text: '    ',
-        options: {
-          color: parseColor(style.color).hex || '000000',
-          fontSize: fontSizePt,
-        },
-      });
+      const listStyleType = style.listStyleType || 'disc';
+      const listStylePos = style.listStylePosition || 'outside';
+
+      let marker = null;
+
+      // 1. Determine the marker character based on list-style-type
+      if (listStyleType !== 'none') {
+        if (listStyleType === 'decimal') {
+          // Calculate index for ordered lists (1., 2., etc.)
+          const index = Array.prototype.indexOf.call(node.parentNode.children, node) + 1;
+          marker = `${index}.`;
+        } else if (listStyleType === 'circle') {
+          marker = '○';
+        } else if (listStyleType === 'square') {
+          marker = '■';
+        } else {
+          marker = '•'; // Default to disc
+        }
+      }
+
+      // 2. Apply alignment and add marker
+      if (marker) {
+        // Only shift the text box to the left if the bullet is OUTSIDE the content box.
+        // Tailwind 'list-inside' puts the bullet inside the box, so we must NOT shift X.
+        if (listStylePos === 'outside') {
+          const bulletShift = (parseFloat(style.fontSize) || 16) * PX_TO_INCH * config.scale * 1.5;
+          x -= bulletShift;
+          w += bulletShift;
+        }
+
+        // Add the bullet + 3 spaces for visual separation
+        textParts.push({
+          text: marker + '   ',
+          options: {
+            color: parseColor(style.color).hex || '000000',
+            fontSize: fontSizePt,
+          },
+        });
+      }
     }
 
     node.childNodes.forEach((child, index) => {
@@ -717,6 +755,8 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
     }
 
     if (textPayload) {
+      textPayload.text[0].options.fontSize =
+        Math.floor(textPayload.text[0]?.options?.fontSize) || 12;
       items.push({
         type: 'text',
         zIndex: zIndex + 1,
@@ -796,21 +836,47 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
 
       if (hasShadow) shapeOpts.shadow = getVisibleShadow(shadowStr, config.scale);
 
-      const borderRadius = parseFloat(style.borderRadius) || 0;
-      const aspectRatio = Math.max(widthPx, heightPx) / Math.min(widthPx, heightPx);
-      const isCircle = aspectRatio < 1.1 && borderRadius >= Math.min(widthPx, heightPx) / 2 - 1;
+      // 1. Calculate dimensions first
+      const minDimension = Math.min(widthPx, heightPx);
+
+      let rawRadius = parseFloat(style.borderRadius) || 0;
+      const isPercentage = style.borderRadius && style.borderRadius.toString().includes('%');
+
+      // 2. Normalize radius to pixels
+      let radiusPx = rawRadius;
+      if (isPercentage) {
+        radiusPx = (rawRadius / 100) * minDimension;
+      }
 
       let shapeType = pptx.ShapeType.rect;
-      if (isCircle) shapeType = pptx.ShapeType.ellipse;
-      else if (borderRadius > 0) {
+
+      // 3. Determine Shape Logic
+      const isSquare = Math.abs(widthPx - heightPx) < 1;
+      const isFullyRound = radiusPx >= minDimension / 2;
+
+      // CASE A: It is an Ellipse if:
+      // 1. It is explicitly "50%" (standard CSS way to make ovals/circles)
+      // 2. OR it is a perfect square and fully rounded (a circle)
+      if (isFullyRound && (isPercentage || isSquare)) {
+        shapeType = pptx.ShapeType.ellipse;
+      }
+      // CASE B: It is a Rounded Rectangle (including "Pill" shapes)
+      else if (radiusPx > 0) {
         shapeType = pptx.ShapeType.roundRect;
-        shapeOpts.rectRadius = Math.min(0.5, borderRadius / Math.min(widthPx, heightPx));
+        let r = radiusPx / minDimension;
+        if (r > 0.5) r = 0.5;
+        if (minDimension < 100) r = r * 0.25; // Small size adjustment for small shapes
+
+        shapeOpts.rectRadius = r;
       }
 
       if (textPayload) {
+        textPayload.text[0].options.fontSize =
+          Math.floor(textPayload.text[0]?.options?.fontSize) || 12;
         const textOptions = {
           shape: shapeType,
           ...shapeOpts,
+          rotate: rotation,
           align: textPayload.align,
           valign: textPayload.valign,
           inset: textPayload.inset,

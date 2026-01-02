@@ -3,7 +3,7 @@ import { Font } from 'fonteditor-core';
 import pako from 'pako';
 
 /**
- * Converts various font formats to EOT (Embedded OpenType), 
+ * Converts various font formats to EOT (Embedded OpenType),
  * which is highly compatible with PowerPoint embedding.
  * @param {string} type - 'ttf', 'woff', or 'otf'
  * @param {ArrayBuffer} fontBuffer - The raw font data
@@ -28,8 +28,5 @@ export async function fontToEot(type, fontBuffer) {
   }
 
   // Ensure we return an ArrayBuffer
-  return eotBuffer.buffer.slice(
-    eotBuffer.byteOffset,
-    eotBuffer.byteOffset + eotBuffer.byteLength
-  );
+  return eotBuffer.buffer.slice(eotBuffer.byteOffset, eotBuffer.byteOffset + eotBuffer.byteLength);
 }

@@ -10,9 +10,11 @@ const input = 'src/index.js';
 const onwarn = (warning, warn) => {
   if (warning.code === 'CIRCULAR_DEPENDENCY') {
     // Ignore circular dependencies in these known packages
-    if (warning.message.includes('node_modules/readable-stream') || 
-        warning.message.includes('node_modules/jszip') ||
-        warning.message.includes('node_modules/semver')) {
+    if (
+      warning.message.includes('node_modules/readable-stream') ||
+      warning.message.includes('node_modules/jszip') ||
+      warning.message.includes('node_modules/semver')
+    ) {
       return;
     }
   }
@@ -42,14 +44,7 @@ const configLibrary = {
     json(),
   ],
   // Mark all dependencies as external so they aren't bundled into the .mjs/.cjs files
-  external: [
-    'pptxgenjs',
-    'html2canvas',
-    'jszip',
-    'fonteditor-core',
-    'opentype.js',
-    'pako'
-  ],
+  external: ['pptxgenjs', 'html2canvas', 'jszip', 'fonteditor-core', 'opentype.js', 'pako'],
   onwarn,
 };
 
@@ -73,12 +68,12 @@ const configBundle = {
       // If you want to bundle PptxGenJS inside, remove it from external/globals.
       // Usually for "bundle.js", we bundle everything except maybe very large libs.
       // Based on your previous config, we are bundling everything.
-    }
+    },
   },
   plugins: [
     // 1. JSON plugin (needed for some deps)
     json(),
-    
+
     // 2. Resolve browser versions of modules
     resolve({
       browser: true,

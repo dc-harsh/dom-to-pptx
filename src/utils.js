@@ -1,10 +1,13 @@
 // src/utils.js
 
-/**
- * Checks if any parent element has overflow: hidden which would clip this element
- * @param {HTMLElement} node - The DOM node to check
- * @returns {boolean} - True if a parent has overflow-hidden or overflow-clip
- */
+// canvas context for color normalization
+let _ctx;
+function getCtx() {
+  if (!_ctx) _ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  return _ctx;
+}
+
+// Checks if any parent element has overflow: hidden which would clip this element
 export function isClippedByParent(node) {
   let parent = node.parentElement;
   while (parent && parent !== document.body) {
@@ -170,28 +173,61 @@ export function generateCustomShapeSVG(w, h, color, opacity, radii) {
   return 'data:image/svg+xml;base64,' + btoa(svg);
 }
 
+// --- REPLACE THE EXISTING parseColor FUNCTION ---
 export function parseColor(str) {
-  if (!str || str === 'transparent' || str.startsWith('rgba(0, 0, 0, 0)')) {
+  if (!str || str === 'transparent' || str.trim() === 'rgba(0, 0, 0, 0)') {
     return { hex: null, opacity: 0 };
   }
-  if (str.startsWith('#')) {
-    let hex = str.slice(1);
-    if (hex.length === 3)
+
+  const ctx = getCtx();
+  ctx.fillStyle = str;
+  // This forces the browser to resolve variables and convert formats (oklch -> rgb/hex)
+  const computed = ctx.fillStyle;
+
+  // 1. Handle Hex Output (e.g. #ff0000 or #ff0000ff)
+  if (computed.startsWith('#')) {
+    let hex = computed.slice(1); // Remove '#'
+    let opacity = 1;
+
+    // Expand shorthand #RGB -> #RRGGBB
+    if (hex.length === 3) {
       hex = hex
         .split('')
         .map((c) => c + c)
         .join('');
-    return { hex: hex.toUpperCase(), opacity: 1 };
+    }
+    // Expand shorthand #RGBA -> #RRGGBBAA
+    else if (hex.length === 4) {
+      hex = hex
+        .split('')
+        .map((c) => c + c)
+        .join('');
+    }
+
+    // Handle 8-digit Hex (RRGGBBAA) - PptxGenJS fails if we send 8 digits
+    if (hex.length === 8) {
+      opacity = parseInt(hex.slice(6), 16) / 255;
+      hex = hex.slice(0, 6); // Keep only RRGGBB
+    }
+
+    return { hex: hex.toUpperCase(), opacity };
   }
-  const match = str.match(/[\d.]+/g);
+
+  // 2. Handle RGB/RGBA Output (e.g. "rgb(55, 65, 81)" or "rgba(55, 65, 81, 1)")
+  const match = computed.match(/[\d.]+/g);
   if (match && match.length >= 3) {
     const r = parseInt(match[0]);
     const g = parseInt(match[1]);
     const b = parseInt(match[2]);
     const a = match.length > 3 ? parseFloat(match[3]) : 1;
+
+    // Bitwise shift to get Hex
     const hex = ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+
     return { hex, opacity: a };
   }
+
+  // Fallback (Parsing failed)
   return { hex: null, opacity: 0 };
 }
 
@@ -583,9 +619,10 @@ export function generateBlurredSVG(w, h, color, radius, blurPx) {
  */
 export function getUsedFontFamilies(root) {
   const families = new Set();
-  
+
   function scan(node) {
-    if (node.nodeType === 1) { // Element
+    if (node.nodeType === 1) {
+      // Element
       const style = window.getComputedStyle(node);
       const fontList = style.fontFamily.split(',');
       // The first font in the stack is the primary one
@@ -599,7 +636,7 @@ export function getUsedFontFamilies(root) {
 
   // Handle array of roots or single root
   const elements = Array.isArray(root) ? root : [root];
-  elements.forEach(el => {
+  elements.forEach((el) => {
     const node = typeof el === 'string' ? document.querySelector(el) : el;
     if (node) scan(node);
   });
@@ -618,7 +655,7 @@ export async function getAutoDetectedFonts(usedFamilies) {
   // Helper to extract clean URL from CSS src string
   const extractUrl = (srcStr) => {
     // Look for url("...") or url('...') or url(...)
-    // Prioritize woff, ttf, otf. Avoid woff2 if possible as handling is harder, 
+    // Prioritize woff, ttf, otf. Avoid woff2 if possible as handling is harder,
     // but if it's the only one, take it (convert logic handles it best effort).
     const matches = srcStr.match(/url\((['"]?)(.*?)\1\)/g);
     if (!matches) return null;
@@ -626,23 +663,23 @@ export async function getAutoDetectedFonts(usedFamilies) {
     // Filter for preferred formats
     let chosenUrl = null;
     for (const match of matches) {
-        const urlRaw = match.replace(/url\((['"]?)(.*?)\1\)/, '$2');
-        // Skip data URIs for now (unless you want to support base64 embedding)
-        if (urlRaw.startsWith('data:')) continue; 
-        
-        if (urlRaw.includes('.ttf') || urlRaw.includes('.otf') || urlRaw.includes('.woff')) {
-            chosenUrl = urlRaw;
-            break; // Found a good one
-        }
-        // Fallback
-        if (!chosenUrl) chosenUrl = urlRaw;
+      const urlRaw = match.replace(/url\((['"]?)(.*?)\1\)/, '$2');
+      // Skip data URIs for now (unless you want to support base64 embedding)
+      if (urlRaw.startsWith('data:')) continue;
+
+      if (urlRaw.includes('.ttf') || urlRaw.includes('.otf') || urlRaw.includes('.woff')) {
+        chosenUrl = urlRaw;
+        break; // Found a good one
+      }
+      // Fallback
+      if (!chosenUrl) chosenUrl = urlRaw;
     }
     return chosenUrl;
   };
 
   for (const sheet of Array.from(document.styleSheets)) {
     try {
-      // Accessing cssRules on cross-origin sheets (like Google Fonts) might fail 
+      // Accessing cssRules on cross-origin sheets (like Google Fonts) might fail
       // if CORS headers aren't set. We wrap in try/catch.
       const rules = sheet.cssRules || sheet.rules;
       if (!rules) continue;
@@ -650,11 +687,11 @@ export async function getAutoDetectedFonts(usedFamilies) {
       for (const rule of Array.from(rules)) {
         if (rule.constructor.name === 'CSSFontFaceRule' || rule.type === 5) {
           const familyName = rule.style.getPropertyValue('font-family').replace(/['"]/g, '').trim();
-          
+
           if (usedFamilies.has(familyName)) {
             const src = rule.style.getPropertyValue('src');
             const url = extractUrl(src);
-            
+
             if (url && !processedUrls.has(url)) {
               processedUrls.add(url);
               foundFonts.push({ name: familyName, url: url });
@@ -663,9 +700,9 @@ export async function getAutoDetectedFonts(usedFamilies) {
         }
       }
     } catch (e) {
-      // SecurityError is common for external stylesheets (CORS). 
+      // SecurityError is common for external stylesheets (CORS).
       // We cannot scan those automatically via CSSOM.
-      console.warn("error:", e);
+      console.warn('error:', e);
       console.warn('Cannot scan stylesheet for fonts (CORS restriction):', sheet.href);
     }
   }
