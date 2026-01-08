@@ -611,6 +611,36 @@ function prepareRenderItem(
     }
   }
 
+  if (node.tagName === 'CANVAS') {
+    const item = {
+      type: 'image',
+      zIndex,
+      domOrder,
+      options: { x, y, w, h, rotate: rotation, data: null }
+    };
+
+    const job = async () => {
+      try {
+        // Direct data extraction from the canvas element
+        // This preserves the exact current state of the chart
+        const dataUrl = node.toDataURL('image/png');
+        
+        // Basic validation
+        if (dataUrl && dataUrl.length > 10) {
+           item.options.data = dataUrl;
+        } else {
+           item.skip = true;
+        }
+      } catch (e) {
+        // Tainted canvas (CORS issues) will throw here
+        console.warn('Failed to capture canvas content:', e);
+        item.skip = true;
+      }
+    };
+
+    return { items: [item], job, stopRecursion: true };
+  }
+
   // --- ASYNC JOB: SVG Tags ---
   if (node.nodeName.toUpperCase() === 'SVG') {
     const item = {
