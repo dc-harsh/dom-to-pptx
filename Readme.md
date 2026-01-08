@@ -263,6 +263,8 @@ We recommend building your slide container at **1920x1080px**. The library will 
 
 ### `exportToPptx(elementOrSelector, options)`
 
+Returns: `Promise<Blob>` - Resolves with the generated PPTX file data (Blob).
+
 | Parameter           | Type                                                        | Description                                                                                                        |
 | :------------------ | :---------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
 | `elementOrSelector` | `string` \| `HTMLElement` \| `Array<string \| HTMLElement>` | The DOM node(s) or ID selector(s) to convert. Can be a single element/selector or an array for multi-slide export. |
@@ -270,11 +272,23 @@ We recommend building your slide container at **1920x1080px**. The library will 
 
 **Options Object:**
 
-| Key              | Type      | Default         | Description                                    |
-| :--------------- | :-------- | :-------------- | :--------------------------------------------- |
-| `fileName`       | `string`  | `"export.pptx"` | The name of the downloaded file.               |
-| `autoEmbedFonts` | `boolean` | `true`          | Automatically detect and embed used fonts.     |
-| `fonts`          | `Array`   | `[]`            | Manual array of font objects: `{ name, url }`. |
+| Key              | Type      | Default         | Description                                                                                              |
+| :--------------- | :-------- | :-------------- | :------------------------------------------------------------------------------------------------------- |
+| `fileName`       | `string`  | `"export.pptx"` | The name of the downloaded file.                                                                         |
+| `autoEmbedFonts` | `boolean` | `true`          | Automatically detect and embed used fonts.                                                               |
+| `fonts`          | `Array`   | `[]`            | Manual array of font objects: `{ name, url }`.                                                           |
+| `skipDownload`   | `boolean` | `false`         | If `true`, the file is not downloaded automatically. Use the returned `Blob` for custom handling (upload). |
+| `listConfig`     | `object`  | `undefined`     | Global overrides for list styles. Structure: `{ color: string, spacing: { before: number, after: number } }`. |
+
+**List Configuration Example:**
+```javascript
+listConfig: {
+  spacing: {
+    before: 10,       // Space before bullet (pt)
+    after: 5          // Space after bullet (pt)
+  }
+}
+```
 
 ## Important Notes
 
