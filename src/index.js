@@ -474,6 +474,90 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
 
   const items = [];
 
+  if ((node.tagName === 'UL' || node.tagName === 'OL') && !isComplexHierarchy(node)) {
+    const listItems = [];
+    const liChildren = Array.from(node.children).filter((c) => c.tagName === 'LI');
+
+    liChildren.forEach((child, index) => {
+      const liStyle = window.getComputedStyle(child);
+
+      // 1. Determine Bullet Config
+      let bullet = { type: 'bullet' };
+      const listStyleType = liStyle.listStyleType || 'disc';
+
+      if (node.tagName === 'OL' || listStyleType === 'decimal') {
+        bullet = { type: 'number' };
+      } else if (listStyleType === 'none') {
+        bullet = false;
+      } else {
+        let code = '2022'; // disc
+        if (listStyleType === 'circle') code = '25CB';
+        if (listStyleType === 'square') code = '25A0';
+        const colorObj = parseColor(liStyle.color);
+        bullet = { code, color: colorObj.hex || '000000' };
+      }
+
+      // 2. Extract Text Parts
+      const parts = collectListParts(child, liStyle, config.scale);
+
+      if (parts.length > 0) {
+        parts.forEach((p) => {
+          if (!p.options) p.options = {};
+        });
+
+        // A. Apply Bullet to FIRST part
+        if (bullet) parts[0].options.bullet = bullet;
+
+        // B. Apply Spacing
+        const mt = parseFloat(liStyle.marginTop) || 0;
+        const mb = parseFloat(liStyle.marginBottom) || 0;
+        if (mt > 0) parts[0].options.paraSpaceBefore = mt * 0.75 * config.scale;
+        if (mb > 0) parts[0].options.paraSpaceAfter = mb * 0.75 * config.scale;
+
+        // C. Force Line Break on LAST part (except the very last item of the list)
+        if (index < liChildren.length - 1) {
+          parts[parts.length - 1].options.breakLine = true;
+        }
+
+        listItems.push(...parts);
+      }
+    });
+
+    if (listItems.length > 0) {
+      // Add background if exists
+      const bgColorObj = parseColor(style.backgroundColor);
+      if (bgColorObj.hex && bgColorObj.opacity > 0) {
+        items.push({
+          type: 'shape',
+          zIndex,
+          domOrder,
+          shapeType: 'rect',
+          options: { x, y, w, h, fill: { color: bgColorObj.hex } },
+        });
+      }
+
+      items.push({
+        type: 'text',
+        zIndex: zIndex + 1,
+        domOrder,
+        textParts: listItems,
+        options: {
+          x,
+          y,
+          w,
+          h,
+          align: 'left',
+          valign: 'top',
+          margin: 0,
+          autoFit: false,
+          wrap: true,
+        },
+      });
+
+      return { items, stopRecursion: true };
+    }
+  }
+
   // --- ASYNC JOB: SVG Tags ---
   if (node.nodeName.toUpperCase() === 'SVG') {
     const item = {
@@ -634,65 +718,21 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
 
   if (isText) {
     const textParts = [];
-    const isList = style.display === 'list-item';
-    if (isList) {
-      const fontSizePt = parseFloat(style.fontSize) * 0.75 * config.scale;
-      const listStyleType = style.listStyleType || 'disc';
-      const listStylePos = style.listStylePosition || 'outside';
-
-      let marker = null;
-
-      // 1. Determine the marker character based on list-style-type
-      if (listStyleType !== 'none') {
-        if (listStyleType === 'decimal') {
-          // Calculate index for ordered lists (1., 2., etc.)
-          const index = Array.prototype.indexOf.call(node.parentNode.children, node) + 1;
-          marker = `${index}.`;
-        } else if (listStyleType === 'circle') {
-          marker = '○';
-        } else if (listStyleType === 'square') {
-          marker = '■';
-        } else {
-          marker = '•'; // Default to disc
-        }
-      }
-
-      // 2. Apply alignment and add marker
-      if (marker) {
-        // Only shift the text box to the left if the bullet is OUTSIDE the content box.
-        // Tailwind 'list-inside' puts the bullet inside the box, so we must NOT shift X.
-        if (listStylePos === 'outside') {
-          const bulletShift = (parseFloat(style.fontSize) || 16) * PX_TO_INCH * config.scale * 1.5;
-          x -= bulletShift;
-          w += bulletShift;
-        }
-
-        // Add the bullet + 3 spaces for visual separation
-        textParts.push({
-          text: marker + '   ',
-          options: {
-            color: parseColor(style.color).hex || '000000',
-            fontSize: fontSizePt,
-          },
-        });
-      }
-    }
 
     node.childNodes.forEach((child, index) => {
       let textVal = child.nodeType === 3 ? child.nodeValue : child.textContent;
       let nodeStyle = child.nodeType === 1 ? window.getComputedStyle(child) : style;
       textVal = textVal.replace(/[\n\r\t]+/g, ' ').replace(/\s{2,}/g, ' ');
-      if (index === 0 && !isList) textVal = textVal.trimStart();
-      else if (index === 0) textVal = textVal.trimStart();
+
+      // Trimming logic
+      if (index === 0) textVal = textVal.trimStart(); // List items still trim start of text
+
       if (index === node.childNodes.length - 1) textVal = textVal.trimEnd();
       if (nodeStyle.textTransform === 'uppercase') textVal = textVal.toUpperCase();
       if (nodeStyle.textTransform === 'lowercase') textVal = textVal.toLowerCase();
 
       if (textVal.length > 0) {
-        textParts.push({
-          text: textVal,
-          options: getTextStyle(nodeStyle, config.scale),
-        });
+        textParts.push({ text: textVal, options: getTextStyle(nodeStyle, config.scale) });
       }
     });
 
@@ -921,6 +961,74 @@ function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex, comput
   }
 
   return { items, stopRecursion: !!textPayload };
+}
+
+function isComplexHierarchy(root) {
+  // Use a simple tree traversal to find forbidden elements in the list structure
+  const stack = [root];
+  while (stack.length > 0) {
+    const el = stack.pop();
+
+    // 1. Layouts: Flex/Grid on LIs
+    if (el.tagName === 'LI') {
+      const s = window.getComputedStyle(el);
+      if (s.display === 'flex' || s.display === 'grid' || s.display === 'inline-flex') return true;
+    }
+
+    // 2. Media / Icons
+    if (['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME'].includes(el.tagName)) return true;
+    if (isIconElement(el)) return true;
+
+    // 3. Nested Lists (Flattening logic doesn't support nested bullets well yet)
+    if (el !== root && (el.tagName === 'UL' || el.tagName === 'OL')) return true;
+
+    // Recurse, but don't go too deep if not needed
+    for (let i = 0; i < el.children.length; i++) {
+      stack.push(el.children[i]);
+    }
+  }
+  return false;
+}
+
+function collectListParts(node, parentStyle, scale) {
+  const parts = [];
+
+  // Check for CSS Content (::before) - often used for icons
+  if (node.nodeType === 1) {
+    const beforeStyle = window.getComputedStyle(node, '::before');
+    const content = beforeStyle.content;
+    if (content && content !== 'none' && content !== 'normal' && content !== '""') {
+      // Strip quotes
+      const cleanContent = content.replace(/^['"]|['"]$/g, '');
+      if (cleanContent.trim()) {
+        parts.push({
+          text: cleanContent + ' ', // Add space after icon
+          options: getTextStyle(window.getComputedStyle(node), scale),
+        });
+      }
+    }
+  }
+
+  node.childNodes.forEach((child) => {
+    if (child.nodeType === 3) {
+      // Text
+      const val = child.nodeValue.replace(/[\n\r\t]+/g, ' ').replace(/\s{2,}/g, ' ');
+      if (val) {
+        // Use parent style if child is text node, otherwise current style
+        const styleToUse = node.nodeType === 1 ? window.getComputedStyle(node) : parentStyle;
+        parts.push({
+          text: val,
+          options: getTextStyle(styleToUse, scale),
+        });
+      }
+    } else if (child.nodeType === 1) {
+      // Element (span, i, b)
+      // Recurse
+      parts.push(...collectListParts(child, parentStyle, scale));
+    }
+  });
+
+  return parts;
 }
 
 function createCompositeBorderItems(sides, x, y, w, h, scale, zIndex, domOrder) {
