@@ -1,14 +1,16 @@
 # dom-to-pptx
 
-**The High-Fidelity HTML to PowerPoint Converter (v1.1.1)**
+**The High-Fidelity HTML to PowerPoint Converter (v1.1.2)**
 
 Most HTML-to-PPTX libraries fail when faced with modern web design. They break on gradients, misalign text, ignore rounded corners, or simply take a screenshot (which isn't editable).
 
 **dom-to-pptx** is different. It is a **Coordinate Scraper & Style Engine** that traverses your DOM, calculates the exact computed styles of every element (Flexbox/Grid positions, complex gradients, shadows), and mathematically maps them to native PowerPoint shapes and text boxes. The result is a fully editable, vector-sharp presentation that looks exactly like your web view.
 
-### 🛠️ Fixes in v1.1.1
-
-- Fix list rendering, shape positioning, and text wrapping issues.
+### 🛠️ Updates in v1.1.2
+- Added canvas rendering
+- Added backend upload support
+- Configurable lists
+- fix list/text spacing issues
 
 ## Features
 

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-01-08
+
+### Added
+- **Canvas Support**: Added support for `<canvas>` elements. Libraries like **ECharts** and **Chart.js** now render correctly as images instead of blank spaces.
+- **Backend Upload Support**: Added `skipDownload` option to `exportToPptx`. The function now returns a `Promise<Blob>`, allowing developers to upload the generated file to a server instead of triggering a browser download.
+- **List Configuration**: Added `listConfig` option to manually override bullet colors and spacing (before/after) globally.
+- **Icon Support in Lists**: Added logic to capture pseudo-element content (`::before`), ensuring icons (e.g., FontAwesome) inside list items are rendered correctly.
+
+### Fixed
+- **Native Lists**: HTML `<ul>` and `<ol>` lists are now rendered as a single native PowerPoint text box with real bullets, rather than disconnected text shapes.
+- **Line Height Calculation**: Fixed an issue where pixel-based CSS `line-height` was interpreted as a multiplier in PowerPoint, causing text to overlap or crush.
+- **Paragraph Spacing**: CSS `margin-top` and `margin-bottom` are now correctly converted to PowerPoint points (`paraSpaceBefore` / `paraSpaceAfter`).
+- **List Item Spacing**: Fixed a bug where list items had double line breaks, causing excessive spacing between bullets.
+
 ## [1.1.1] - 2026-01-02
 
 ### Fixed
