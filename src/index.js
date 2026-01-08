@@ -35,8 +35,9 @@ const PX_TO_INCH = 1 / PPI;
  * @param {HTMLElement | string | Array<HTMLElement | string>} target
  * @param {Object} options
  * @param {string} [options.fileName]
- * @param {Array<{name: string, url: string}>} [options.fonts] - Explicit fonts
- * @param {boolean} [options.autoEmbedFonts=true] - Attempt to auto-detect and embed used fonts
+ * @param {boolean} [options.skipDownload=false] - If true, prevents automatic download
+ * @param {Object} [options.listConfig] - Config for bullets
+ * @returns {Promise<Blob>} - Returns the generated PPTX Blob
  */
 export async function exportToPptx(target, options = {}) {
   const resolvePptxConstructor = (pkg) => {
@@ -127,16 +128,22 @@ export async function exportToPptx(target, options = {}) {
     finalBlob = await pptx.write({ outputType: 'blob' });
   }
 
-  // 4. Download
-  const fileName = options.fileName || 'export.pptx';
-  const url = URL.createObjectURL(finalBlob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // 4. Output Handling
+  // If skipDownload is NOT true, proceed with browser download
+  if (!options.skipDownload) {
+    const fileName = options.fileName || 'export.pptx';
+    const url = URL.createObjectURL(finalBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Always return the blob so the caller can use it (e.g. upload to server)
+  return finalBlob;
 }
 
 /**
