@@ -7,6 +7,136 @@ function getCtx() {
   return _ctx;
 }
 
+function getTableBorder(style, side, scale) {
+  const widthStr = style[`border${side}Width`];
+  const styleStr = style[`border${side}Style`];
+  const colorStr = style[`border${side}Color`];
+
+  const width = parseFloat(widthStr) || 0;
+  if (width === 0 || styleStr === 'none' || styleStr === 'hidden') {
+    return null;
+  }
+
+  const color = parseColor(colorStr);
+  if (!color.hex || color.opacity === 0) return null;
+
+  let dash = 'solid';
+  if (styleStr === 'dashed') dash = 'dash';
+  if (styleStr === 'dotted') dash = 'dot';
+
+  return {
+    pt: width * 0.75 * scale, // Convert px to pt
+    color: color.hex,
+    style: dash,
+  };
+}
+
+/**
+ * Extracts native table data for PptxGenJS.
+ */
+export function extractTableData(node, scale) {
+  const rows = [];
+  const colWidths = [];
+
+  // 1. Calculate Column Widths based on the first row of cells
+  // We look at the first <tr>'s children to determine visual column widths.
+  // Note: This assumes a fixed grid. Complex colspan/rowspan on the first row
+  // might skew widths, but getBoundingClientRect captures the rendered result.
+  const firstRow = node.querySelector('tr');
+  if (firstRow) {
+    const cells = Array.from(firstRow.children);
+    cells.forEach((cell) => {
+      const rect = cell.getBoundingClientRect();
+      const wIn = rect.width * (1 / 96) * scale;
+      colWidths.push(wIn);
+    });
+  }
+
+  // 2. Iterate Rows
+  const trList = node.querySelectorAll('tr');
+  trList.forEach((tr) => {
+    const rowData = [];
+    const cellList = Array.from(tr.children).filter((c) =>
+      ['TD', 'TH'].includes(c.tagName)
+    );
+
+    cellList.forEach((cell) => {
+      const style = window.getComputedStyle(cell);
+      const cellText = cell.innerText.replace(/[\n\r\t]+/g, ' ').trim();
+      
+      // A. Text Style
+      const textStyle = getTextStyle(style, scale);
+      
+      // B. Cell Background
+      const bg = parseColor(style.backgroundColor);
+      const fill = (bg.hex && bg.opacity > 0) ? { color: bg.hex } : null;
+
+      // C. Alignment
+      let align = 'left';
+      if (style.textAlign === 'center') align = 'center';
+      if (style.textAlign === 'right' || style.textAlign === 'end') align = 'right';
+      
+      let valign = 'top';
+      if (style.verticalAlign === 'middle') valign = 'middle';
+      if (style.verticalAlign === 'bottom') valign = 'bottom';
+
+      // D. Padding (Margins in PPTX)
+      // CSS Padding px -> PPTX Margin pt
+      const padding = getPadding(style, scale); 
+      // getPadding returns [top, right, bottom, left] in inches relative to scale
+      // PptxGenJS expects points (pt) for margin: [t, r, b, l]
+      // or discrete properties. Let's use discrete for clarity.
+      const margin = [
+          padding[0] * 72, // top
+          padding[1] * 72, // right
+          padding[2] * 72, // bottom
+          padding[3] * 72  // left
+      ];
+
+      // E. Borders
+      const borderTop = getTableBorder(style, 'Top', scale);
+      const borderRight = getTableBorder(style, 'Right', scale);
+      const borderBottom = getTableBorder(style, 'Bottom', scale);
+      const borderLeft = getTableBorder(style, 'Left', scale);
+
+      // F. Construct Cell Object
+      rowData.push({
+        text: cellText,
+        options: {
+          color: textStyle.color,
+          fontFace: textStyle.fontFace,
+          fontSize: textStyle.fontSize,
+          bold: textStyle.bold,
+          italic: textStyle.italic,
+          underline: textStyle.underline,
+          
+          fill: fill,
+          align: align,
+          valign: valign,
+          margin: margin,
+          
+          rowspan: parseInt(cell.getAttribute('rowspan')) || null,
+          colspan: parseInt(cell.getAttribute('colspan')) || null,
+          
+          border: {
+            pt: null, // trigger explicit object structure
+            top: borderTop,
+            right: borderRight,
+            bottom: borderBottom,
+            left: borderLeft
+          }
+        },
+      });
+    });
+
+    if (rowData.length > 0) {
+      rows.push(rowData);
+    }
+  });
+
+  return { rows, colWidths };
+}
+
 // Checks if any parent element has overflow: hidden which would clip this element
 export function isClippedByParent(node) {
   let parent = node.parentElement;

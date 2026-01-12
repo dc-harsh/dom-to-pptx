@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.1.3] - 2026-01-12
+
+### Added
+- **Table Supprt**: Added support for table elements like `<table>`, `<th>` `<td>`, `<tr>` with basic css formatting.
 
 ## [1.1.2] - 2026-01-08
 

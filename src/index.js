@@ -24,6 +24,7 @@ import {
   generateCustomShapeSVG,
   getUsedFontFamilies,
   getAutoDetectedFonts,
+  extractTableData
 } from './utils.js';
 import { getProcessedImage } from './image-processor.js';
 
@@ -250,6 +251,18 @@ async function processSlide(root, slide, pptx, globalOptions = {}) {
     if (item.type === 'shape') slide.addShape(item.shapeType, item.options);
     if (item.type === 'image') slide.addImage(item.options);
     if (item.type === 'text') slide.addText(item.textParts, item.options);
+    if (item.type === 'table') {
+        slide.addTable(item.tableData.rows, {
+            x: item.options.x,
+            y: item.options.y,
+            w: item.options.w,
+            colW: item.tableData.colWidths, // Essential for correct layout
+            autoPage: false,
+            // Remove default table styles so our extracted CSS applies cleanly
+            border: { type: "none" }, 
+            fill: { color: "FFFFFF", transparency: 100 } 
+        });
+    }
   }
 }
 
@@ -489,6 +502,25 @@ function prepareRenderItem(
   let h = unrotatedH;
 
   const items = [];
+
+  if (node.tagName === 'TABLE') {
+      const tableData = extractTableData(node, config.scale);
+      
+      // Calculate total table width to ensure X position is correct
+      // (Though x calculation above usually handles it, tables can be finicky)
+      return {
+          items: [
+              {
+                  type: 'table',
+                  zIndex: effectiveZIndex,
+                  domOrder,
+                  tableData: tableData,
+                  options: { x, y, w: unrotatedW, h: unrotatedH }
+              }
+          ],
+          stopRecursion: true // Important: Don't process TR/TD as separate shapes
+      };
+  }
 
   if ((node.tagName === 'UL' || node.tagName === 'OL') && !isComplexHierarchy(node)) {
     const listItems = [];
