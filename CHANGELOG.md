@@ -1,6 +1,19 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.1.4] - 2026-01-19
+
+### Added
+- **Tailwind CSS v4 Support**: Added robust color parsing for modern CSS color formats (e.g., `oklch`, `lab`, `display-p3`) used by Tailwind v4. The library now uses canvas-based normalization to support any valid CSS color.
+- **Text Gradient Fallback**: Text with CSS gradients (e.g., `background-clip: text`) now gracefully falls back to the *first color* of the gradient string instead of rendering as invisible or black.
+- **List Marker Customization**: Support for `::marker` pseudo-element styles. Custom bullet colors and font sizes are now preserved in the generated PowerPoint.
+
+### Fixed
+- **Text Alignment**: Fixed an issue where text containers were slightly shorter than browser rendering, causing overlap with subsequent elements. Added a precision buffer to account for font metric differences.
+- **Line Breaks**: Fixed an issue where `<br>` tags with surrounding whitespace caused double line breaks in the output.
+- **Missing Elements (Cone Fix)**: Fixed a bug where empty elements with solid backgrounds and partial border radii (e.g., decorative shapes) were skipped during rasterization. We now generate a high-fidelity Vector SVG for these shapes.
+- **Inline Badges**: Improved flow for inline elements with backgrounds (badges), ensuring they align correctly with surrounding text.
+
 ## [1.1.3] - 2026-01-12
 
 ### Added

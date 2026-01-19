@@ -252,16 +252,16 @@ async function processSlide(root, slide, pptx, globalOptions = {}) {
     if (item.type === 'image') slide.addImage(item.options);
     if (item.type === 'text') slide.addText(item.textParts, item.options);
     if (item.type === 'table') {
-        slide.addTable(item.tableData.rows, {
-            x: item.options.x,
-            y: item.options.y,
-            w: item.options.w,
-            colW: item.tableData.colWidths, // Essential for correct layout
-            autoPage: false,
-            // Remove default table styles so our extracted CSS applies cleanly
-            border: { type: "none" }, 
-            fill: { color: "FFFFFF", transparency: 100 } 
-        });
+      slide.addTable(item.tableData.rows, {
+        x: item.options.x,
+        y: item.options.y,
+        w: item.options.w,
+        colW: item.tableData.colWidths, // Essential for correct layout
+        autoPage: false,
+        // Remove default table styles so our extracted CSS applies cleanly
+        border: { type: "none" },
+        fill: { color: "FFFFFF", transparency: 100 }
+      });
     }
   }
 }
@@ -504,22 +504,22 @@ function prepareRenderItem(
   const items = [];
 
   if (node.tagName === 'TABLE') {
-      const tableData = extractTableData(node, config.scale);
-      
-      // Calculate total table width to ensure X position is correct
-      // (Though x calculation above usually handles it, tables can be finicky)
-      return {
-          items: [
-              {
-                  type: 'table',
-                  zIndex: effectiveZIndex,
-                  domOrder,
-                  tableData: tableData,
-                  options: { x, y, w: unrotatedW, h: unrotatedH }
-              }
-          ],
-          stopRecursion: true // Important: Don't process TR/TD as separate shapes
-      };
+    const tableData = extractTableData(node, config.scale);
+
+    // Calculate total table width to ensure X position is correct
+    // (Though x calculation above usually handles it, tables can be finicky)
+    return {
+      items: [
+        {
+          type: 'table',
+          zIndex: effectiveZIndex,
+          domOrder,
+          tableData: tableData,
+          options: { x, y, w: unrotatedW, h: unrotatedH }
+        }
+      ],
+      stopRecursion: true // Important: Don't process TR/TD as separate shapes
+    };
   }
 
   if ((node.tagName === 'UL' || node.tagName === 'OL') && !isComplexHierarchy(node)) {
@@ -528,6 +528,8 @@ function prepareRenderItem(
 
     liChildren.forEach((child, index) => {
       const liStyle = window.getComputedStyle(child);
+      const liRect = child.getBoundingClientRect();
+      const parentRect = node.getBoundingClientRect(); // node is UL/OL
 
       // 1. Determine Bullet Config
       let bullet = { type: 'bullet' };
@@ -542,8 +544,9 @@ function prepareRenderItem(
         if (listStyleType === 'circle') code = '25CB';
         if (listStyleType === 'square') code = '25A0';
 
-        // --- CHANGE: Color Logic (Option > ::marker > CSS color) ---
+        // --- CHANGE: Color & Size Logic (Option > ::marker > CSS color) ---
         let finalHex = '000000';
+        let markerFontSize = null;
 
         // A. Check Global Option override
         if (globalOptions?.listConfig?.color) {
@@ -560,12 +563,44 @@ function prepareRenderItem(
             const colorObj = parseColor(liStyle.color);
             if (colorObj.hex) finalHex = colorObj.hex;
           }
+
+          // Check ::marker font-size
+          const markerFs = parseFloat(markerStyle.fontSize);
+          if (!isNaN(markerFs) && markerFs > 0) {
+            // Convert px->pt for PPTX
+            markerFontSize = markerFs * 0.75 * config.scale;
+          }
         }
 
         bullet = { code, color: finalHex };
+        if (markerFontSize) {
+          bullet.fontSize = markerFontSize;
+        }
       }
 
-      // 2. Extract Text Parts
+      // 2. Calculate Dynamic Indent (Respects padding-left)
+      // Visual Indent = Distance from UL left edge to LI Content left edge.
+      // PptxGenJS 'indent' = Space between bullet and text? 
+      // Actually PptxGenJS 'indent' allows setting the hanging indent.
+      // We calculate the TOTAL visual offset from the parent container.
+      // 1 px = 0.75 pt (approx, standard DTP).
+      // We must scale it by config.scale.
+      const visualIndentPx = liRect.left - parentRect.left;
+      /*
+         Standard indent in PPT is ~27pt.
+         If visualIndentPx is small (e.g. 10px padding), we want small indent.
+         If visualIndentPx is large (40px padding), we want large indent.
+         We treat 'indent' as the value to pass to PptxGenJS.
+      */
+      const computedIndentPt = visualIndentPx * 0.75 * config.scale;
+
+      if (bullet && computedIndentPt > 0) {
+        bullet.indent = computedIndentPt;
+        // Also support custom margin between bullet and text if provided in listConfig?
+        // For now, computedIndentPt covers the visual placement.
+      }
+
+      // 3. Extract Text Parts
       const parts = collectListParts(child, liStyle, config.scale);
 
       if (parts.length > 0) {
@@ -573,8 +608,32 @@ function prepareRenderItem(
           if (!p.options) p.options = {};
         });
 
-        // A. Apply Bullet to FIRST part
-        if (bullet) parts[0].options.bullet = bullet;
+        // A. Apply Bullet
+        // Workaround: pptxgenjs bullets inherit the style of the text run they are attached to.
+        // To support ::marker styles (color, size) that differ from the text, we create
+        // a "dummy" text run at the start of the list item that carries the bullet configuration.
+        if (bullet) {
+          const firstPartInfo = parts[0].options;
+
+          // Create a dummy run. We use a Zero Width Space to ensure it's rendered but invisible.
+          // This "run" will hold the bullet and its specific color/size.
+          const bulletRun = {
+            text: '\u200B',
+            options: {
+              ...firstPartInfo, // Inherit base props (fontFace, etc.)
+              color: bullet.color || firstPartInfo.color,
+              fontSize: bullet.fontSize || firstPartInfo.fontSize,
+              bullet: bullet
+            }
+          };
+
+          // Don't duplicate transparent or empty color from firstPart if bullet has one
+          if (bullet.color) bulletRun.options.color = bullet.color;
+          if (bullet.fontSize) bulletRun.options.fontSize = bullet.fontSize;
+
+          // Prepend
+          parts.unshift(bulletRun);
+        }
 
         // B. Apply Spacing
         let ptBefore = 0;
@@ -656,12 +715,12 @@ function prepareRenderItem(
         // Direct data extraction from the canvas element
         // This preserves the exact current state of the chart
         const dataUrl = node.toDataURL('image/png');
-        
+
         // Basic validation
         if (dataUrl && dataUrl.length > 10) {
-           item.options.data = dataUrl;
+          item.options.data = dataUrl;
         } else {
-           item.skip = true;
+          item.skip = true;
         }
       } catch (e) {
         // Tainted canvas (CORS issues) will throw here
@@ -778,6 +837,37 @@ function prepareRenderItem(
         borderTopLeftRadius ||
         borderTopRightRadius));
 
+  // --- PRIORITY SVG: Solid Fill with Partial Border Radius (Vector Cone/Tab) ---
+  // Fix for "missing cone": Prioritize SVG vector generation over Raster Canvas for simple shapes with partial radii.
+  // This avoids html2canvas failures on empty divs.
+  const tempBg = parseColor(style.backgroundColor);
+  const isTxt = isTextContainer(node);
+
+  if (hasPartialBorderRadius && tempBg.hex && !isTxt) {
+    const shapeSvg = generateCustomShapeSVG(
+      widthPx,
+      heightPx,
+      tempBg.hex,
+      tempBg.opacity,
+      {
+        tl: parseFloat(style.borderTopLeftRadius) || 0,
+        tr: parseFloat(style.borderTopRightRadius) || 0,
+        br: parseFloat(style.borderBottomRightRadius) || 0,
+        bl: parseFloat(style.borderBottomLeftRadius) || 0,
+      }
+    );
+
+    return {
+      items: [{
+        type: 'image',
+        zIndex,
+        domOrder,
+        options: { data: shapeSvg, x, y, w, h, rotate: rotation },
+      }],
+      stopRecursion: true // Treat as leaf
+    };
+  }
+
   // --- ASYNC JOB: Clipped Divs via Canvas ---
   if (hasPartialBorderRadius && isClippedByParent(node)) {
     const marginLeft = parseFloat(style.marginLeft) || 0;
@@ -833,21 +923,53 @@ function prepareRenderItem(
 
   if (isText) {
     const textParts = [];
+    let trimNextLeading = false;
 
     node.childNodes.forEach((child, index) => {
+      // Handle <br> tags
+      if (child.tagName === 'BR') {
+        // 1. Trim trailing space from the *previous* text part to prevent double wrapping
+        if (textParts.length > 0) {
+          const lastPart = textParts[textParts.length - 1];
+          if (lastPart.text && typeof lastPart.text === 'string') {
+            lastPart.text = lastPart.text.trimEnd();
+          }
+        }
+
+        textParts.push({ text: '', options: { breakLine: true } });
+
+        // 2. Signal to trim leading space from the *next* text part
+        trimNextLeading = true;
+        return;
+      }
+
       let textVal = child.nodeType === 3 ? child.nodeValue : child.textContent;
       let nodeStyle = child.nodeType === 1 ? window.getComputedStyle(child) : style;
       textVal = textVal.replace(/[\n\r\t]+/g, ' ').replace(/\s{2,}/g, ' ');
 
       // Trimming logic
-      if (index === 0) textVal = textVal.trimStart(); // List items still trim start of text
+      if (index === 0) textVal = textVal.trimStart();
+      if (trimNextLeading) {
+        textVal = textVal.trimStart();
+        trimNextLeading = false;
+      }
 
       if (index === node.childNodes.length - 1) textVal = textVal.trimEnd();
       if (nodeStyle.textTransform === 'uppercase') textVal = textVal.toUpperCase();
       if (nodeStyle.textTransform === 'lowercase') textVal = textVal.toLowerCase();
 
       if (textVal.length > 0) {
-        textParts.push({ text: textVal, options: getTextStyle(nodeStyle, config.scale) });
+        const textOpts = getTextStyle(nodeStyle, config.scale);
+
+        // BUG FIX: Numbers 1 and 2 having background.
+        // If this is a naked Text Node (nodeType 3), it inherits style from the parent container.
+        // The parent container's background is already rendered as the Shape Fill.
+        // We must NOT render it again as a Text Highlight, otherwise it looks like a solid marker on top of the shape.
+        if (child.nodeType === 3 && textOpts.highlight) {
+          delete textOpts.highlight;
+        }
+
+        textParts.push({ text: textVal, options: textOpts });
       }
     });
 
