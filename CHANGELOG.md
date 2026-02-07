@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.5] - 2026-02-07
+
+### Added
+
+- **SVG Vector Export**: New `svgAsVector` option keeps SVG elements as vectors instead of rasterizing them to PNG. This enables "Convert to Shape" in PowerPoint for fully editable charts and graphics.
+
+### Fixed
+
+- **Recursion Logic** Resolved recursion issues where containers with partial border-radius (like `.glass-box`) were incorrectly rasterized as images, making children uneditable.
+- **Fontawesome Icon partially rendering:** Solved icon clipping issues by injecting a global style tag to enforce FontAwesome font family and correct image display properties during potential rasterization.
+
+### Changed
+
+- **Code Refactoring**: Extracted `inlineSvgStyles` for better style consistency between raster and vector exports.
+
 ## [1.1.4] - 2026-01-19
 
 ### Added

@@ -283,19 +283,41 @@ async function elementToCanvasImage(node, widthPx, heightPx) {
     const height = Math.max(Math.ceil(heightPx), 1);
     const style = window.getComputedStyle(node);
 
+    // Add padding to the clone to capture spilling content (like extensive font glyphs)
+    const padding = 10;
+
     html2canvas(node, {
       backgroundColor: null,
       logging: false,
       scale: 3, // Higher scale for sharper icons
       useCORS: true, // critical for external fonts/images
+      width: width + padding * 2, // Capture a larger area
+      height: height + padding * 2,
+      x: -padding, // Offset capture to include the padding
+      y: -padding,
       onclone: (clonedDoc) => {
         const clonedNode = clonedDoc.getElementById(tempId);
         if (clonedNode) {
-          // --- FIX: PREVENT ICON CLIPPING ---
-          // 1. Force overflow visible so glyphs bleeding out aren't cut
+          // --- FIX: CLIP & FONT ISSUES ---
+          // Apply styles DIRECTLY to elements to ensure html2canvas picks them up
+          // This avoids issues where <style> tags in onclone are ignored or delayed
+
+          // 1. Force FontAwesome Family on Icons
+          const icons = clonedNode.querySelectorAll('.fa, .fas, .far, .fab');
+          icons.forEach((icon) => {
+            icon.style.setProperty('font-family', 'FontAwesome', 'important');
+          });
+
+          // 2. Fix Image Display
+          const images = clonedNode.querySelectorAll('img');
+          images.forEach((img) => {
+            img.style.setProperty('display', 'inline-block', 'important');
+          });
+
+          // 3. Force overflow visible on the container so glyphs bleeding out aren't cut
           clonedNode.style.overflow = 'visible';
 
-          // 2. Adjust alignment for Icons to prevent baseline clipping
+          // 4. Adjust alignment for Icons to prevent baseline clipping
           // (Applies to <i>, <span>, or standard icon classes)
           const tag = clonedNode.tagName;
           if (tag === 'I' || tag === 'SPAN' || clonedNode.className.includes('fa-')) {
@@ -304,6 +326,7 @@ async function elementToCanvasImage(node, widthPx, heightPx) {
             clonedNode.style.display = 'inline-flex';
             clonedNode.style.justifyContent = 'center';
             clonedNode.style.alignItems = 'center';
+            clonedNode.style.setProperty('font-family', 'FontAwesome', 'important'); // Ensure root icon gets it too
 
             // Remove margins that might offset the capture
             clonedNode.style.margin = '0';
@@ -325,10 +348,17 @@ async function elementToCanvasImage(node, widthPx, heightPx) {
         destCanvas.height = height;
         const ctx = destCanvas.getContext('2d');
 
-        // Draw captured canvas.
-        // We simply draw it to fill the box. Since we centered it in 'onclone',
-        // the glyph should now be visible within the bounds.
-        ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, width, height);
+        // Draw captured canvas (which is padded) back to the original size
+        // We need to draw the CENTER of the source canvas to the destination
+        // The source canvas is (width + 2*padding) * scale
+        // We want to draw the crop starting at padding*scale
+        const scale = 3;
+        const sX = padding * scale;
+        const sY = padding * scale;
+        const sW = width * scale;
+        const sH = height * scale;
+
+        ctx.drawImage(canvas, sX, sY, sW, sH, 0, 0, width, height);
 
         // --- Border Radius Clipping (Existing Logic) ---
         let tl = parseFloat(style.borderTopLeftRadius) || 0;
@@ -848,7 +878,11 @@ function prepareRenderItem(
   const tempBg = parseColor(style.backgroundColor);
   const isTxt = isTextContainer(node);
 
-  if (hasPartialBorderRadius && tempBg.hex && !isTxt) {
+  // BUG FIX: Don't treat as a vector shape if it has content (like text or children).
+  // This prevents containers like ".glass-box" from being treated as empty shapes and stopping recursion.
+  const hasContent = node.textContent.trim().length > 0 || node.children.length > 0;
+
+  if (hasPartialBorderRadius && tempBg.hex && !isTxt && !hasContent) {
     const shapeSvg = generateCustomShapeSVG(widthPx, heightPx, tempBg.hex, tempBg.opacity, {
       tl: parseFloat(style.borderTopLeftRadius) || 0,
       tr: parseFloat(style.borderTopRightRadius) || 0,
@@ -870,7 +904,9 @@ function prepareRenderItem(
   }
 
   // --- ASYNC JOB: Clipped Divs via Canvas ---
-  if (hasPartialBorderRadius && isClippedByParent(node)) {
+  // Only capture as image if it's an empty leaf.
+  // Rasterizing containers (like .glass-box) kills editability of children.
+  if (hasPartialBorderRadius && isClippedByParent(node) && !hasContent) {
     const marginLeft = parseFloat(style.marginLeft) || 0;
     const marginTop = parseFloat(style.marginTop) || 0;
     x += marginLeft * PX_TO_INCH * config.scale;

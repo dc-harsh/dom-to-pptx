@@ -181,11 +181,11 @@ export function getGradientFallbackColor(bgImage) {
   // 3. Find first part that is a color (skip angle/direction)
   for (const part of parts) {
     // Ignore directions (to right) or angles (90deg, 0.5turn)
-    if (/^(to\s|[\d\.]+(deg|rad|turn|grad))/.test(part)) continue;
+    if (/^(to\s|[\d.]+(deg|rad|turn|grad))/.test(part)) continue;
 
     // Extract color: Remove trailing position (e.g. "red 50%" -> "red")
     // Regex matches whitespace + number + unit at end of string
-    const colorPart = part.replace(/\s+(-?[\d\.]+(%|px|em|rem|ch|vh|vw)?)$/, '');
+    const colorPart = part.replace(/\s+(-?[\d.]+(%|px|em|rem|ch|vh|vw)?)$/, '');
 
     // Check if it's not just a number (some gradients might have bare numbers? unlikely in standard syntax)
     if (colorPart) return colorPart;
