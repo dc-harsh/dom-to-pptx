@@ -1,6 +1,6 @@
 # dom-to-pptx
 
-**The High-Fidelity HTML to PowerPoint Converter (v1.1.4)**
+**The High-Fidelity HTML to PowerPoint Converter (v1.1.5)**
 
 Most HTML-to-PPTX libraries fail when faced with modern web design. They break on gradients, misalign text, ignore rounded corners, or simply take a screenshot (which isn't editable).
 
@@ -9,12 +9,8 @@ Most HTML-to-PPTX libraries fail when faced with modern web design. They break o
 ### 🛠️ Updates in v1.1.5
 
 - **SVG Vector Export:** New `svgAsVector` option keeps SVG elements as vectors instead of rasterizing them. This enables "Convert to Shape" in PowerPoint for editable charts and graphics.
-
-### Updates in v1.1.4
-
-- **Tailwind CSS v4 Support** (oklch colors)
-- **Text Gradient Fallback**
-- **List Customization & Layout fixes**
+- **Fontawesome Icon partially rendering:** Solved icon clipping issues by injecting a global style tag to enforce FontAwesome font family and correct image display properties during potential rasterization.
+- **Recursion Logic** Resolved recursion issues where containers were incorrectly rasterized as images, making children uneditable.
 
 ## Features
 
