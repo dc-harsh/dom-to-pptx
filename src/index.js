@@ -486,13 +486,14 @@ function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
   const labels = config.data?.labels || [];
 
   // PptxGenJS horizontal bars render first item at the bottom; Chart.js renders it at the top.
-  // Reverse so the visual order matches the source chart.
-  const normalizedLabels = labels.map((l) => String(l).replace(/&amp;/g, '&')).reverse();
+  // Only reverse for horizontal bar charts — vertical bars render left-to-right correctly.
+  const rawLabels = labels.map((l) => String(l).replace(/&amp;/g, '&'));
+  const normalizedLabels = isHorizontal ? [...rawLabels].reverse() : rawLabels;
 
   const chartData = datasets.map((ds) => ({
     name: ds.label || '',
     labels: normalizedLabels,
-    values: [...(ds.data || [])].reverse(),
+    values: isHorizontal ? [...(ds.data || [])].reverse() : (ds.data || []),
   }));
 
   // Convert a CSS color string to a 6-char uppercase hex (no #) for PptxGenJS.
