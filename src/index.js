@@ -172,6 +172,13 @@ async function processSlide(root, slide, pptx, globalOptions = {}) {
     offY: (PPTX_HEIGHT_IN - contentHeightIn * scale) / 2,
   };
 
+  // Apply the root element's background directly as the slide background,
+  // so it doesn't appear as a selectable shape on the slide.
+  const rootBg = parseColor(window.getComputedStyle(root).backgroundColor);
+  if (rootBg.hex) {
+    slide.background = { color: rootBg.hex };
+  }
+
   const renderQueue = [];
   const asyncTasks = []; // Queue for heavy operations (Images, Canvas)
   let domOrderCounter = 0;
@@ -562,6 +569,10 @@ function prepareRenderItem(
   computedStyle,
   globalOptions = {}
 ) {
+  // Skip the root element itself — its background is already applied to slide.background,
+  // and it should not appear as a selectable shape on the slide.
+  if (node === config.root) return null;
+
   // 1. Text Node Handling
   if (node.nodeType === 3) {
     const textContent = node.nodeValue.trim();
