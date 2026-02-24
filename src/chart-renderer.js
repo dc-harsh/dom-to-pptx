@@ -29,9 +29,19 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
   const datasets = config.data?.datasets || [];
   const labels = config.data?.labels || [];
 
+  const isPielike = type === 'pie' || type === 'doughnut';
+
   // PptxGenJS horizontal bars render first item at the bottom; Chart.js renders it at the top.
   const rawLabels = labels.map((l) => String(l).replace(/&amp;/g, '&'));
-  const normalizedLabels = isHorizontal ? [...rawLabels].reverse() : rawLabels;
+  let normalizedLabels = isHorizontal ? [...rawLabels].reverse() : rawLabels;
+
+  // For pie/doughnut with no labels: PptxGenJS uses labels.length to determine how many
+  // per-slice <c:dPt> color elements to emit. With labels=[] it emits 0 dPt elements and
+  // falls back to the theme accent color (blue). Synthesize placeholder labels so the slice
+  // count is correct and chartColors are applied.
+  if (isPielike && normalizedLabels.length === 0 && datasets[0]?.data?.length > 0) {
+    normalizedLabels = datasets[0].data.map((_, i) => String(i));
+  }
 
   const chartData = datasets.map((ds) => ({
     name: ds.label || '',
@@ -49,7 +59,6 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
   };
 
   // Pie/doughnut: backgroundColor is per-slice (array); bar/line: per-dataset (scalar or first).
-  const isPielike = type === 'pie' || type === 'doughnut';
   const colors = isPielike
     ? (datasets[0]?.backgroundColor
         ? (Array.isArray(datasets[0].backgroundColor)
