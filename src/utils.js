@@ -7,6 +7,9 @@ function getCtx() {
   return _ctx;
 }
 
+export const FONT_SCALE_FACTOR = 0.733275;
+export const LINE_SPACING_PX_PER_PT = 1.181;
+
 function getTableBorder(style, side, scale) {
   const widthStr = style[`border${side}Width`];
   const styleStr = style[`border${side}Style`];
@@ -73,9 +76,6 @@ export function extractTableData(node, scale) {
       const styleSource = anchor || textSpan;
       const sourceComputedStyle = window.getComputedStyle(styleSource);
       const textStyle = getTextStyle(sourceComputedStyle, scale);
-      // Use Math.ceil for font size: 8.1pt → 9pt to avoid rounding below the rendered size
-      const rawFontPt = parseFloat(sourceComputedStyle.fontSize) * 0.75 * scale;
-      if (rawFontPt > 0) textStyle.fontSize = Math.ceil(rawFontPt);
 
       // A2. Hyperlink - preserve <a href> as a clickable link with blue/underline styling
       let cellText = cell.innerText.replace(/[\n\r\t]+/g, ' ').trim();
@@ -482,9 +482,9 @@ export function getTextStyle(style, scale) {
     }
 
     if (!isNaN(lhPx) && lhPx > 0) {
-      // Convert Pixel Height to Point Height (1px = 0.75pt)
-      // And apply the global layout scale.
-      lineSpacing = lhPx * 0.75 * scale;
+      // Convert Browser line-height px to PPT line spacing pt
+      // 1pt (PPT) = 1.181px (browser line height), then apply layout scale.
+      lineSpacing = (lhPx / LINE_SPACING_PX_PER_PT) * scale;
     }
   }
 
@@ -496,13 +496,13 @@ export function getTextStyle(style, scale) {
   const mt = parseFloat(style.marginTop) || 0;
   const mb = parseFloat(style.marginBottom) || 0;
 
-  if (mt > 0) paraSpaceBefore = mt * 0.75 * scale;
-  if (mb > 0) paraSpaceAfter = mb * 0.75 * scale;
+  if (mt > 0) paraSpaceBefore = mt * FONT_SCALE_FACTOR * scale;
+  if (mb > 0) paraSpaceAfter = mb * FONT_SCALE_FACTOR * scale;
 
   return {
     color: colorObj.hex || '000000',
     fontFace: style.fontFamily.split(',')[0].replace(/['"]/g, ''),
-    fontSize: Math.ceil(fontSizePx * 0.75 * scale),
+    fontSize: fontSizePx * FONT_SCALE_FACTOR * scale,
     bold: parseInt(style.fontWeight) >= 600,
     italic: style.fontStyle === 'italic',
     underline: style.textDecoration.includes('underline'),

@@ -26,11 +26,13 @@ import {
   getUsedFontFamilies,
   getAutoDetectedFonts,
   extractTableData,
+  FONT_SCALE_FACTOR,
 } from './utils.js';
 import { getProcessedImage } from './image-processor.js';
 
 const PPI = 96;
 const PX_TO_INCH = 1 / PPI;
+const TABLE_MEDIA_SELECTOR = 'img, svg, canvas, video, iframe, object, embed';
 
 /**
  * Main export function.
@@ -539,10 +541,10 @@ function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
     valGridLine: valScale.grid?.display === false ? { style: 'none' } : undefined,
     catGridLine: catScale.grid?.display === false ? { style: 'none' } : undefined,
     ...(catFont.family && { catAxisLabelFontFace: catFont.family }),
-    ...(catFont.size && { catAxisLabelFontSize: Math.round(catFont.size * 0.75) }),
+    ...(catFont.size && { catAxisLabelFontSize: catFont.size * FONT_SCALE_FACTOR }),
     ...(catColor && { catAxisLabelColor: catColor }),
     ...(valFont.family && { valAxisLabelFontFace: valFont.family }),
-    ...(valFont.size && { valAxisLabelFontSize: Math.round(valFont.size * 0.75) }),
+    ...(valFont.size && { valAxisLabelFontSize: valFont.size * FONT_SCALE_FACTOR }),
     ...(valColor && { valAxisLabelColor: valColor }),
     ...(valScale.min !== undefined && { valAxisMinVal: valScale.min }),
     ...(valScale.max !== undefined && { valAxisMaxVal: valScale.max }),
@@ -647,16 +649,55 @@ function prepareRenderItem(
 
     // Calculate total table width to ensure X position is correct
     // (Though x calculation above usually handles it, tables can be finicky)
+    const tableItem = {
+      type: 'table',
+      zIndex: effectiveZIndex,
+      domOrder,
+      tableData: tableData,
+      options: { x, y, w: unrotatedW, h: unrotatedH },
+    };
+
+    // Overlay media inside tables (images, charts, SVGs, etc.)
+    const mediaEls = Array.from(node.querySelectorAll(TABLE_MEDIA_SELECTOR));
+    const mediaItems = [];
+    const mediaJobs = [];
+
+    if (mediaEls.length > 0) {
+      mediaEls.forEach((mediaEl, idx) => {
+        const mediaStyle = window.getComputedStyle(mediaEl);
+        if (
+          mediaStyle.display === 'none' ||
+          mediaStyle.visibility === 'hidden' ||
+          mediaStyle.opacity === '0'
+        ) {
+          return;
+        }
+
+        const mediaDomOrder = domOrder + (idx + 1) / (mediaEls.length + 1);
+        const result = prepareRenderItem(
+          mediaEl,
+          config,
+          mediaDomOrder,
+          pptx,
+          effectiveZIndex,
+          mediaStyle,
+          globalOptions
+        );
+
+        if (result) {
+          if (result.items) mediaItems.push(...result.items);
+          if (result.job) mediaJobs.push(result.job);
+        }
+      });
+    }
+
+    const job = mediaJobs.length
+      ? async () => Promise.all(mediaJobs.map((task) => task()))
+      : null;
+
     return {
-      items: [
-        {
-          type: 'table',
-          zIndex: effectiveZIndex,
-          domOrder,
-          tableData: tableData,
-          options: { x, y, w: unrotatedW, h: unrotatedH },
-        },
-      ],
+      items: [tableItem, ...mediaItems],
+      job,
       stopRecursion: true, // Important: Don't process TR/TD as separate shapes
     };
   }
@@ -707,7 +748,7 @@ function prepareRenderItem(
           const markerFs = parseFloat(markerStyle.fontSize);
           if (!isNaN(markerFs) && markerFs > 0) {
             // Convert px->pt for PPTX
-            markerFontSize = markerFs * 0.75 * config.scale;
+            markerFontSize = markerFs * FONT_SCALE_FACTOR * config.scale;
           }
         }
 
@@ -722,7 +763,6 @@ function prepareRenderItem(
       // PptxGenJS 'indent' = Space between bullet and text?
       // Actually PptxGenJS 'indent' allows setting the hanging indent.
       // We calculate the TOTAL visual offset from the parent container.
-      // 1 px = 0.75 pt (approx, standard DTP).
       // We must scale it by config.scale.
       const visualIndentPx = liRect.left - parentRect.left;
       /*
@@ -731,7 +771,7 @@ function prepareRenderItem(
          If visualIndentPx is large (40px padding), we want large indent.
          We treat 'indent' as the value to pass to PptxGenJS.
       */
-      const computedIndentPt = visualIndentPx * 0.75 * config.scale;
+      const computedIndentPt = visualIndentPx * FONT_SCALE_FACTOR * config.scale;
 
       if (bullet && computedIndentPt > 0) {
         bullet.indent = computedIndentPt;
@@ -791,8 +831,8 @@ function prepareRenderItem(
         else {
           const mt = parseFloat(liStyle.marginTop) || 0;
           const mb = parseFloat(liStyle.marginBottom) || 0;
-          if (mt > 0) ptBefore = mt * 0.75 * config.scale;
-          if (mb > 0) ptAfter = mb * 0.75 * config.scale;
+          if (mt > 0) ptBefore = mt * FONT_SCALE_FACTOR * config.scale;
+          if (mb > 0) ptAfter = mb * FONT_SCALE_FACTOR * config.scale;
         }
 
         if (ptBefore > 0) parts[0].options.paraSpaceBefore = ptBefore;
@@ -1198,8 +1238,10 @@ function prepareRenderItem(
     }
 
     if (textPayload) {
-      textPayload.text[0].options.fontSize =
-        Math.floor(textPayload.text[0]?.options?.fontSize) || 12;
+      const firstRun = textPayload.text[0];
+      if (firstRun?.options && !Number.isFinite(firstRun.options.fontSize)) {
+        firstRun.options.fontSize = 12;
+      }
       items.push({
         type: 'text',
         zIndex: zIndex + 1,
@@ -1314,8 +1356,10 @@ function prepareRenderItem(
       }
 
       if (textPayload) {
-        textPayload.text[0].options.fontSize =
-          Math.floor(textPayload.text[0]?.options?.fontSize) || 12;
+        const firstRun = textPayload.text[0];
+        if (firstRun?.options && !Number.isFinite(firstRun.options.fontSize)) {
+          firstRun.options.fontSize = 12;
+        }
         const textOptions = {
           shape: shapeType,
           ...shapeOpts,
