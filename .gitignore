@@ -7,3 +7,8 @@ test-playground
 dist
 ins.md
 code_context.txt
+.claude/
+.agents/
+cli/
+memory/
+package-lock.json
