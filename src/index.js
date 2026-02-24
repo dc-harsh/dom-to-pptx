@@ -252,6 +252,7 @@ async function processSlide(root, slide, pptx, globalOptions = {}) {
   for (const item of finalQueue) {
     if (item.type === 'shape') slide.addShape(item.shapeType, item.options);
     if (item.type === 'image') slide.addImage(item.options);
+    if (item.type === 'chart') slide.addChart(item.chartType, item.chartData, item.options);
     if (item.type === 'text') slide.addText(item.textParts, item.options);
     if (item.type === 'table') {
       slide.addTable(item.tableData.rows, {
@@ -453,6 +454,99 @@ function isIconElement(node) {
   }
 
   return false;
+}
+
+/**
+ * Maps a Chart.js config object to a PptxGenJS native chart render item.
+ * Returns null if the chart type is unsupported (caller should fall back to image).
+ */
+function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
+  const type = config.type;
+  const isHorizontal = config.options?.indexAxis === 'y';
+
+  const TYPE_MAP = {
+    bar: pptx.charts.BAR,
+    line: pptx.charts.LINE,
+    pie: pptx.charts.PIE,
+    doughnut: pptx.charts.DOUGHNUT,
+    radar: pptx.charts.RADAR,
+    scatter: pptx.charts.SCATTER,
+  };
+  const chartType = TYPE_MAP[type];
+  if (!chartType) return null;
+
+  const datasets = config.data?.datasets || [];
+  const labels = config.data?.labels || [];
+
+  // PptxGenJS horizontal bars render first item at the bottom; Chart.js renders it at the top.
+  // Reverse so the visual order matches the source chart.
+  const normalizedLabels = labels.map((l) => String(l).replace(/&amp;/g, '&')).reverse();
+
+  const chartData = datasets.map((ds) => ({
+    name: ds.label || '',
+    labels: normalizedLabels,
+    values: [...(ds.data || [])].reverse(),
+  }));
+
+  // Convert a CSS color string to a 6-char uppercase hex (no #) for PptxGenJS.
+  // For plain hex strings from Chart.js JSON configs this avoids the canvas round-trip.
+  const toHex = (color) => {
+    if (!color) return null;
+    if (/^#[0-9a-fA-F]{6}$/.test(color)) return color.slice(1).toUpperCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(color))
+      return color
+        .slice(1)
+        .split('')
+        .map((c) => c + c)
+        .join('')
+        .toUpperCase();
+    return parseColor(color).hex; // fallback for rgb/rgba/named colors
+  };
+
+  const colors = datasets
+    .map((ds) => {
+      const bg = Array.isArray(ds.backgroundColor) ? ds.backgroundColor[0] : ds.backgroundColor;
+      return toHex(bg);
+    })
+    .filter(Boolean);
+
+  const opts = config.options || {};
+  const scales = opts.scales || {};
+  const valScale = isHorizontal ? (scales.x || {}) : (scales.y || {});
+  const catScale = isHorizontal ? (scales.y || {}) : (scales.x || {});
+  const plugins = opts.plugins || {};
+
+  const catFont = catScale.ticks?.font || {};
+  const valFont = valScale.ticks?.font || {};
+  const catColor = toHex(catScale.ticks?.color);
+  const valColor = toHex(valScale.ticks?.color);
+
+  const chartOptions = {
+    x,
+    y,
+    w,
+    h,
+    ...(type === 'bar' && { barDir: isHorizontal ? 'bar' : 'col' }),
+    ...(colors.length > 0 && { chartColors: colors }),
+    valGridLine: valScale.grid?.display === false ? { style: 'none' } : undefined,
+    catGridLine: catScale.grid?.display === false ? { style: 'none' } : undefined,
+    ...(catFont.family && { catAxisLabelFontFace: catFont.family }),
+    ...(catFont.size && { catAxisLabelFontSize: Math.round(catFont.size * 0.75) }),
+    ...(catColor && { catAxisLabelColor: catColor }),
+    ...(valFont.family && { valAxisLabelFontFace: valFont.family }),
+    ...(valFont.size && { valAxisLabelFontSize: Math.round(valFont.size * 0.75) }),
+    ...(valColor && { valAxisLabelColor: valColor }),
+    ...(valScale.min !== undefined && { valAxisMinVal: valScale.min }),
+    ...(valScale.max !== undefined && { valAxisMaxVal: valScale.max }),
+    // beginAtZero may be on either scale depending on how the Chart.js config is authored
+    ...((valScale.beginAtZero || catScale.beginAtZero) && { valAxisMinVal: 0 }),
+    showLegend: plugins.legend?.display !== false,
+    showValue: plugins.datalabels?.display === true,
+    chartArea: { fill: { color: 'FFFFFF' } },
+    plotArea: { fill: { color: 'FFFFFF' } },
+  };
+
+  return { type: 'chart', zIndex, domOrder, chartType, chartData, options: chartOptions };
 }
 
 /**
@@ -736,6 +830,19 @@ function prepareRenderItem(
   }
 
   if (node.tagName === 'CANVAS') {
+    // --- Native chart path: use data-chart attribute if present ---
+    const chartJson = node.dataset?.chart;
+    if (chartJson) {
+      try {
+        const chartConfig = JSON.parse(chartJson);
+        const chartItem = buildChartItem(chartConfig, pptx, zIndex, domOrder, x, y, w, h);
+        if (chartItem) return { items: [chartItem], job: null, stopRecursion: true };
+      } catch (e) {
+        console.warn('data-chart parse failed, falling back to image:', e);
+      }
+    }
+
+    // --- Fallback: capture canvas as PNG image ---
     const item = {
       type: 'image',
       zIndex,
