@@ -53,20 +53,57 @@ export function extractTableData(node, scale) {
   }
 
   // 2. Iterate Rows
+  const rowHeights = [];
   const trList = node.querySelectorAll('tr');
   trList.forEach((tr) => {
     const rowData = [];
+    // Capture actual rendered row height
+    const trRect = tr.getBoundingClientRect();
+    rowHeights.push(trRect.height * (1 / 96) * scale);
     const cellList = Array.from(tr.children).filter((c) => ['TD', 'TH'].includes(c.tagName));
 
     cellList.forEach((cell) => {
       const style = window.getComputedStyle(cell);
-      const cellText = cell.innerText.replace(/[\n\r\t]+/g, ' ').trim();
 
-      // A. Text Style
-      const textStyle = getTextStyle(style, scale);
+      // A. Text Style - read from innermost text element (span/a) to get CSS class styling.
+      // CSS class rules on child spans override inherited inline styles from the td/th,
+      // so getComputedStyle(cell) often gives the wrong color/font.
+      const anchor = cell.querySelector('a[href]');
+      const textSpan = cell.querySelector('span') || cell;
+      const styleSource = anchor || textSpan;
+      const sourceComputedStyle = window.getComputedStyle(styleSource);
+      const textStyle = getTextStyle(sourceComputedStyle, scale);
+      // Use Math.ceil for font size: 8.1pt → 9pt to avoid rounding below the rendered size
+      const rawFontPt = parseFloat(sourceComputedStyle.fontSize) * 0.75 * scale;
+      if (rawFontPt > 0) textStyle.fontSize = Math.ceil(rawFontPt);
 
-      // B. Cell Background
-      const bg = parseColor(style.backgroundColor);
+      // A2. Hyperlink - preserve <a href> as a clickable link with blue/underline styling
+      let cellText = cell.innerText.replace(/[\n\r\t]+/g, ' ').trim();
+      let hyperlinkData = null;
+      if (anchor) {
+        const anchorStyle = window.getComputedStyle(anchor);
+        const anchorColor = parseColor(anchorStyle.color);
+        if (anchorColor.hex) textStyle.color = anchorColor.hex;
+        textStyle.underline = textStyle.underline || anchorStyle.textDecoration.includes('underline');
+        const href = anchor.getAttribute('href');
+        if (href) hyperlinkData = { url: href };
+        const anchorText = anchor.innerText.replace(/[\n\r\t]+/g, ' ').trim();
+        if (anchorText) cellText = anchorText;
+      }
+
+      // B. Cell Background - check cell first, then walk up to tr/thead/tbody
+      let bg = parseColor(style.backgroundColor);
+      if (!bg.hex || bg.opacity === 0) {
+        let ancestor = cell.parentElement;
+        while (ancestor && !['TABLE', 'BODY', 'HTML'].includes(ancestor.tagName.toUpperCase())) {
+          const ancestorBg = parseColor(window.getComputedStyle(ancestor).backgroundColor);
+          if (ancestorBg.hex && ancestorBg.opacity > 0) {
+            bg = ancestorBg;
+            break;
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
       const fill = bg.hex && bg.opacity > 0 ? { color: bg.hex } : null;
 
       // C. Alignment
@@ -91,15 +128,21 @@ export function extractTableData(node, scale) {
         padding[3] * 72, // left
       ];
 
-      // E. Borders
-      const borderTop = getTableBorder(style, 'Top', scale);
-      const borderRight = getTableBorder(style, 'Right', scale);
-      const borderBottom = getTableBorder(style, 'Bottom', scale);
-      const borderLeft = getTableBorder(style, 'Left', scale);
+      // E. Borders - merge cell borders with parent tr borders as fallback
+      const trStyle = window.getComputedStyle(cell.parentElement);
+      const borderTop = getTableBorder(style, 'Top', scale) || getTableBorder(trStyle, 'Top', scale);
+      const borderRight = getTableBorder(style, 'Right', scale) || getTableBorder(trStyle, 'Right', scale);
+      const borderBottom = getTableBorder(style, 'Bottom', scale) || getTableBorder(trStyle, 'Bottom', scale);
+      const borderLeft = getTableBorder(style, 'Left', scale) || getTableBorder(trStyle, 'Left', scale);
 
       // F. Construct Cell Object
+      // For hyperlinks, use PptxGenJS structured text array so the url is preserved
+      const cellContent = hyperlinkData
+        ? [{ text: cellText, options: { color: textStyle.color, underline: textStyle.underline, hyperlink: hyperlinkData } }]
+        : cellText;
+
       rowData.push({
-        text: cellText,
+        text: cellContent,
         options: {
           color: textStyle.color,
           fontFace: textStyle.fontFace,
@@ -116,13 +159,14 @@ export function extractTableData(node, scale) {
           rowspan: parseInt(cell.getAttribute('rowspan')) || null,
           colspan: parseInt(cell.getAttribute('colspan')) || null,
 
-          border: {
-            pt: null, // trigger explicit object structure
-            top: borderTop,
-            right: borderRight,
-            bottom: borderBottom,
-            left: borderLeft,
-          },
+          // PptxGenJS border format: array [top, right, bottom, left]
+          // Use { type: 'none' } for sides with no border (null → default gray otherwise)
+          border: [
+            borderTop    ? { pt: borderTop.pt,    color: borderTop.color,    type: borderTop.style    } : { type: 'none' },
+            borderRight  ? { pt: borderRight.pt,  color: borderRight.color,  type: borderRight.style  } : { type: 'none' },
+            borderBottom ? { pt: borderBottom.pt, color: borderBottom.color, type: borderBottom.style } : { type: 'none' },
+            borderLeft   ? { pt: borderLeft.pt,   color: borderLeft.color,   type: borderLeft.style   } : { type: 'none' },
+          ],
         },
       });
     });
@@ -132,7 +176,7 @@ export function extractTableData(node, scale) {
     }
   });
 
-  return { rows, colWidths };
+  return { rows, colWidths, rowHeights };
 }
 
 // Checks if any parent element has overflow: hidden which would clip this element
@@ -458,7 +502,7 @@ export function getTextStyle(style, scale) {
   return {
     color: colorObj.hex || '000000',
     fontFace: style.fontFamily.split(',')[0].replace(/['"]/g, ''),
-    fontSize: Math.floor(fontSizePx * 0.75 * scale),
+    fontSize: Math.ceil(fontSizePx * 0.75 * scale),
     bold: parseInt(style.fontWeight) >= 600,
     italic: style.fontStyle === 'italic',
     underline: style.textDecoration.includes('underline'),

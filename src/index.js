@@ -258,7 +258,8 @@ async function processSlide(root, slide, pptx, globalOptions = {}) {
         x: item.options.x,
         y: item.options.y,
         w: item.options.w,
-        colW: item.tableData.colWidths, // Essential for correct layout
+        colW: item.tableData.colWidths,
+        rowH: item.tableData.rowHeights, // Preserve rendered row heights
         autoPage: false,
         // Remove default table styles so our extracted CSS applies cleanly
         border: { type: 'none' },
@@ -1014,6 +1015,15 @@ function prepareRenderItem(
       let align = style.textAlign || 'left';
       if (align === 'start') align = 'left';
       if (align === 'end') align = 'right';
+
+      // Prefer inner child element's text-align over the container's.
+      // CSS class rules on child spans can override parent inline styles,
+      // and the child's computed value reflects what the browser actually renders.
+      const firstChildEl = Array.from(node.childNodes).find(c => c.nodeType === 1);
+      if (firstChildEl) {
+        const childAlign = window.getComputedStyle(firstChildEl).textAlign;
+        if (childAlign === 'center' || childAlign === 'right') align = childAlign;
+      }
       let valign = 'top';
       if (style.alignItems === 'center') valign = 'middle';
       if (style.justifyContent === 'center' && style.display.includes('flex')) align = 'center';
