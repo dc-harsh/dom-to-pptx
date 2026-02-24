@@ -19,6 +19,12 @@ const path = require('path');
 const { chromium } = require('playwright');
 const { URL } = require('url');
 
+const API_SECRET = process.env.API_SECRET;
+if (!API_SECRET) {
+  console.error('API_SECRET is not set. Refusing to start without authentication enabled.');
+  process.exit(1);
+}
+
 // Pre-load dom-to-pptx bundle once at startup (avoids per-request overhead).
 // In Docker the bundle is placed next to this file by the Dockerfile.
 // Locally it lives in dist/ after running `npm run build` from the repo root.
@@ -378,6 +384,21 @@ function sendBinary(res, buffer, filename) {
   res.end(buffer);
 }
 
+function extractAuthToken(req) {
+  const headerSecret = req.headers['x-api-secret'] || req.headers['x-api-key'];
+  if (typeof headerSecret === 'string' && headerSecret.trim()) return headerSecret.trim();
+  const auth = req.headers['authorization'];
+  if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
+    return auth.slice('Bearer '.length).trim();
+  }
+  return null;
+}
+
+function isAuthorized(req) {
+  const token = extractAuthToken(req);
+  return token && token === API_SECRET;
+}
+
 // ============== Start Server ==============
 async function startServer() {
   const pool = new BrowserPool(CONFIG.pool);
@@ -394,13 +415,18 @@ async function startServer() {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Secret, X-API-Key',
       });
       res.end();
       return;
     }
 
     try {
+      if (pathname !== '/health' && !isAuthorized(req)) {
+        sendJson(res, 401, { error: 'Unauthorized' });
+        return;
+      }
+
       // GET /health
       if (pathname === '/health' && req.method === 'GET') {
         const poolStats = pool.getStats();
