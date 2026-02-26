@@ -13,3 +13,6 @@ cli/
 memory/
 package-lock.json
 CLAUDE.md
+test.pptx
+dom-to-pptx.bundle.js
+html2pptx.js
