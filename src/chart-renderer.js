@@ -83,7 +83,6 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
   const valFont = valScale.ticks?.font || {};
   const catColor = toHex(catScale.ticks?.color);
   const valColor = toHex(valScale.ticks?.color);
-
   const chartOptions = {
     x, y, w, h,
     ...(type === 'bar' && { barDir: isHorizontal ? 'bar' : 'col' }),
@@ -99,7 +98,7 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
     ...(valScale.min !== undefined && { valAxisMinVal: valScale.min }),
     ...(valScale.max !== undefined && { valAxisMaxVal: valScale.max }),
     // beginAtZero may be on either scale axis depending on how the Chart.js config is authored
-    ...((valScale.beginAtZero || catScale.beginAtZero) && { valAxisMinVal: 0 }),
+    // ...((valScale.beginAtZero || catScale.beginAtZero) && { valAxisMinVal: 0 }),
     showLegend: plugins.legend?.display !== false,
     showValue: plugins.datalabels?.display === true,
     chartArea: { fill: { color: 'FFFFFF' } },
