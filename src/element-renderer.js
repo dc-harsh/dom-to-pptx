@@ -339,6 +339,9 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
       let textVal = child.nodeType === 3 ? child.nodeValue : child.textContent;
       let nodeStyle = child.nodeType === 1 ? window.getComputedStyle(child) : style;
       textVal = textVal.replace(/[\n\r\t]+/g, ' ').replace(/\s{2,}/g, ' ');
+      // Element children (span, b, strong, etc.) always have HTML-indentation whitespace
+      // at their boundaries — trim it. Word separators come from adjacent text nodes.
+      if (child.nodeType === 1) textVal = textVal.trim();
 
       if (index === 0) textVal = textVal.trimStart();
       if (trimNextLeading) { textVal = textVal.trimStart(); trimNextLeading = false; }
@@ -354,6 +357,22 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
       }
     });
 
+    // Post-process: trim boundary whitespace that HTML indentation leaves on element
+    // children at non-zero / non-last indices (e.g. <div>\n  <span>TEXT</span>\n</div>)
+    if (textParts.length > 0) {
+      const first = textParts[0];
+      if (typeof first.text === 'string' && !first.options?.breakLine) {
+        first.text = first.text.trimStart();
+        if (!first.text) textParts.shift();
+      }
+    }
+    if (textParts.length > 0) {
+      const last = textParts[textParts.length - 1];
+      if (typeof last.text === 'string' && !last.options?.breakLine) {
+        last.text = last.text.trimEnd();
+        if (!last.text) textParts.pop();
+      }
+    }
     if (textParts.length > 0) {
       let align = style.textAlign || 'left';
       if (align === 'start') align = 'left';

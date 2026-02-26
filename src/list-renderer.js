@@ -35,6 +35,16 @@ export function collectListParts(node, parentStyle, scale) {
     }
   });
 
+  // Trim boundary HTML indentation whitespace (e.g. <strong>\n  TEXT\n</strong>)
+  if (parts.length > 0 && typeof parts[0].text === 'string') {
+    parts[0].text = parts[0].text.trimStart();
+    if (!parts[0].text) parts.shift();
+  }
+  if (parts.length > 0 && typeof parts[parts.length - 1].text === 'string') {
+    parts[parts.length - 1].text = parts[parts.length - 1].text.trimEnd();
+    if (!parts[parts.length - 1].text) parts.pop();
+  }
+
   return parts;
 }
 
@@ -69,6 +79,16 @@ export function collectLiDirectParts(li, liStyle, scale) {
       parts.push(...collectListParts(child, liStyle, scale));
     }
   });
+
+  // Trim boundary HTML indentation whitespace from the overall list item text
+  if (parts.length > 0 && typeof parts[0].text === 'string') {
+    parts[0].text = parts[0].text.trimStart();
+    if (!parts[0].text) parts.shift();
+  }
+  if (parts.length > 0 && typeof parts[parts.length - 1].text === 'string') {
+    parts[parts.length - 1].text = parts[parts.length - 1].text.trimEnd();
+    if (!parts[parts.length - 1].text) parts.pop();
+  }
 
   return parts;
 }
