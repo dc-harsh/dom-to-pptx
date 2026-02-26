@@ -7,6 +7,7 @@ services:
       PORT: "3000"
       POOL_MAX: "${POOL_MAX:-5}"
       NODE_ENV: production
+      API_SECRET: "${API_SECRET}"
     restart: unless-stopped
     deploy:
       resources:
