@@ -1,6 +1,6 @@
 // src/style.js
 import { parseColor, getGradientFallbackColor } from './color.js';
-import { FONT_SCALE_FACTOR, LINE_SPACING_PX_PER_PT } from './constants.js';
+import { FONT_SCALE_FACTOR } from './constants.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -100,14 +100,7 @@ export function getTextStyle(style, scale) {
     if (fallback) colorObj = parseColor(fallback);
   }
 
-  let lineSpacing = null;
   const fontSizePx = parseFloat(style.fontSize);
-  const lhStr = style.lineHeight;
-  if (lhStr && lhStr !== 'normal') {
-    let lhPx = parseFloat(lhStr);
-    if (/^[0-9.]+$/.test(lhStr)) lhPx *= fontSizePx; // bare multiplier
-    if (!isNaN(lhPx) && lhPx > 0) lineSpacing = (lhPx / LINE_SPACING_PX_PER_PT) * scale;
-  }
 
   const mt = parseFloat(style.marginTop) || 0;
   const mb = parseFloat(style.marginBottom) || 0;
@@ -121,7 +114,6 @@ export function getTextStyle(style, scale) {
     bold: parseInt(style.fontWeight) >= 600,
     italic: style.fontStyle === 'italic',
     underline: style.textDecoration.includes('underline'),
-    ...(lineSpacing && { lineSpacing }),
     ...(paraSpaceBefore > 0 && { paraSpaceBefore }),
     ...(paraSpaceAfter  > 0 && { paraSpaceAfter }),
     ...(parseColor(style.backgroundColor).hex
