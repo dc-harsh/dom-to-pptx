@@ -1,6 +1,7 @@
 // src/table.js
 import { parseColor } from './color.js';
 import { getTextStyle, getPadding } from './style.js';
+import { FONT_SCALE_FACTOR } from './constants.js';
 
 /**
  * Extracts a list (UL/OL) inside a table cell as an array of PptxGenJS text run objects
@@ -26,9 +27,22 @@ function extractCellListRuns(cell, scale) {
       const liTextStyle = getTextStyle(liStyle, scale);
 
       // Prefer ::marker color, fall back to element color
-      const markerColor = parseColor(window.getComputedStyle(li, '::marker').color);
+      const markerStyle = window.getComputedStyle(li, '::marker');
+      const markerColor = parseColor(markerStyle.color);
       const bulletColor = markerColor.hex || liTextStyle.color || '000000';
       const bullet = { code: BULLET_CODES[depth % BULLET_CODES.length], color: bulletColor };
+
+      // Compute indent from the UL's padding-left, capped at 24 px.
+      // Table-cell ULs without explicit padding use the browser default (~40 px),
+      // which inflates the gap; 24 px matches the typical author-set value.
+      const rawPaddingPx = parseFloat(window.getComputedStyle(listEl).paddingLeft) || 0;
+      const paddingPx = Math.min(rawPaddingPx, 24);
+      const computedIndentPt = paddingPx * FONT_SCALE_FACTOR * scale;
+      if (computedIndentPt > 0) bullet.indent = computedIndentPt;
+
+      // Use ::marker font size so the bullet glyph is sized correctly
+      const markerFs = parseFloat(markerStyle.fontSize);
+      if (!isNaN(markerFs) && markerFs > 0) bullet.fontSize = markerFs * FONT_SCALE_FACTOR * scale;
 
       // Collect direct text only (skip nested UL/OL — handled by recursion below)
       let directText = '';
