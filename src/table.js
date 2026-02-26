@@ -3,6 +3,91 @@ import { parseColor } from './color.js';
 import { getTextStyle, getPadding } from './style.js';
 
 /**
+ * Extracts a list (UL/OL) inside a table cell as an array of PptxGenJS text run objects
+ * using the native PptxGenJS bullet API.
+ *
+ * Table cells cannot use the ZWS-run trick used by list-renderer.js for standalone text boxes.
+ * In table cells PptxGenJS emits one <a:pPr> per run that has paragraph-level properties;
+ * having two runs per paragraph (ZWS + text) causes two <a:pPr> elements in the same <a:p>,
+ * and PowerPoint uses the last one — which has <a:buNone/>.
+ *
+ * Solution: one run per list-item paragraph with `bullet` placed directly on it so
+ * PptxGenJS emits a single <a:pPr> containing <a:buChar> and any other para properties.
+ */
+function extractCellListRuns(cell, scale) {
+  const BULLET_CODES = ['2022', '25E6', '25A0']; // •  ◦  ▪
+  const runs = [];
+
+  function processListEl(listEl, depth) {
+    Array.from(listEl.children).forEach((li) => {
+      if (li.tagName !== 'LI') return;
+
+      const liStyle = window.getComputedStyle(li);
+      const liTextStyle = getTextStyle(liStyle, scale);
+
+      // Prefer ::marker color, fall back to element color
+      const markerColor = parseColor(window.getComputedStyle(li, '::marker').color);
+      const bulletColor = markerColor.hex || liTextStyle.color || '000000';
+      const bullet = { code: BULLET_CODES[depth % BULLET_CODES.length], color: bulletColor };
+
+      // Collect direct text only (skip nested UL/OL — handled by recursion below)
+      let directText = '';
+      li.childNodes.forEach((child) => {
+        if (child.nodeType === 3) {
+          directText += child.textContent;
+        } else if (child.nodeType === 1 && child.tagName !== 'UL' && child.tagName !== 'OL') {
+          directText += child.innerText || child.textContent;
+        }
+      });
+      directText = directText.replace(/[\n\r\t]+/g, ' ').trim();
+
+      if (directText) {
+        // Single run per paragraph: bullet + text in one options object → one <a:pPr> → no conflict.
+        runs.push({
+          text: directText,
+          options: {
+            ...liTextStyle,
+            bullet,
+            ...(depth > 0 && { indentLevel: depth }),
+            breakLine: true,
+          },
+        });
+      }
+
+      // Recurse into nested lists
+      Array.from(li.children).forEach((child) => {
+        if (child.tagName === 'UL' || child.tagName === 'OL') processListEl(child, depth + 1);
+      });
+    });
+  }
+
+  cell.childNodes.forEach((child) => {
+    if (child.nodeType === 3) {
+      const t = child.textContent.replace(/[\n\r\t]+/g, ' ').trim();
+      if (t) runs.push({ text: t, options: { ...getTextStyle(window.getComputedStyle(cell), scale), breakLine: true } });
+    } else if (child.nodeType === 1) {
+      if (child.tagName === 'UL' || child.tagName === 'OL') {
+        processListEl(child, 0);
+      } else {
+        const nested = child.querySelector('ul, ol');
+        if (nested) {
+          processListEl(nested, 0);
+        } else {
+          const t = (child.innerText || child.textContent || '').replace(/[\n\r\t]+/g, ' ').trim();
+          if (t) runs.push({ text: t, options: { ...getTextStyle(window.getComputedStyle(child), scale), breakLine: true } });
+        }
+      }
+    }
+  });
+
+  // Strip trailing breakLine from the last item
+  if (runs.length > 0 && runs[runs.length - 1].options?.breakLine) {
+    delete runs[runs.length - 1].options.breakLine;
+  }
+  return runs;
+}
+
+/**
  * Reads a single TD/TH border side from a CSSStyleDeclaration.
  * Returns null when the border is effectively absent.
  */
@@ -53,17 +138,26 @@ export function extractTableData(node, scale) {
         const styleSource = anchor || cell.querySelector('span') || cell;
         const textStyle = getTextStyle(window.getComputedStyle(styleSource), scale);
 
-        // Hyperlink handling
-        let cellText = cell.innerText.replace(/[\n\r\t]+/g, ' ').trim();
+        // List handling — if cell contains a UL/OL, extract bullet text runs
+        const cellListEl = cell.querySelector('ul, ol');
+        let cellText;
         let hyperlinkData = null;
-        if (anchor) {
-          const anchorColor = parseColor(window.getComputedStyle(anchor).color);
-          if (anchorColor.hex) textStyle.color = anchorColor.hex;
-          textStyle.underline = textStyle.underline || window.getComputedStyle(anchor).textDecoration.includes('underline');
-          const href = anchor.getAttribute('href');
-          if (href) hyperlinkData = { url: href };
-          const anchorText = anchor.innerText.replace(/[\n\r\t]+/g, ' ').trim();
-          if (anchorText) cellText = anchorText;
+
+        if (cellListEl) {
+          const runs = extractCellListRuns(cell, scale);
+          cellText = runs.length > 0 ? runs : '';
+        } else {
+          // Hyperlink handling (no list)
+          cellText = cell.innerText.replace(/[\n\r\t]+/g, ' ').trim();
+          if (anchor) {
+            const anchorColor = parseColor(window.getComputedStyle(anchor).color);
+            if (anchorColor.hex) textStyle.color = anchorColor.hex;
+            textStyle.underline = textStyle.underline || window.getComputedStyle(anchor).textDecoration.includes('underline');
+            const href = anchor.getAttribute('href');
+            if (href) hyperlinkData = { url: href };
+            const anchorText = anchor.innerText.replace(/[\n\r\t]+/g, ' ').trim();
+            if (anchorText) cellText = anchorText;
+          }
         }
 
         // Cell background — walk up to tr/thead/tbody if cell itself is transparent
