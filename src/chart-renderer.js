@@ -104,7 +104,10 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
       return { barGapWidthPct: Math.round((1 - fill) / fill * 100) };
     })()),
     ...(colors.length > 0 && { chartColors: colors }),
-    valGridLine: valScale.grid?.display === false
+    // scale.display:false hides the whole axis (labels + grid); grid.display:false hides only gridlines
+    ...(valScale.display === false && { valAxisHidden: true }),
+    ...(catScale.display === false && { catAxisHidden: true }),
+    valGridLine: (valScale.display === false || valScale.grid?.display === false)
       ? { style: 'none' }
       : valScale.grid?.color || valScale.grid?.lineWidth
         ? {
@@ -112,7 +115,7 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
             size: valScale.grid.lineWidth ? Math.max(0.25, valScale.grid.lineWidth * 0.75) : 1,
           }
         : undefined,
-    catGridLine: catScale.grid?.display === false ? { style: 'none' } : undefined,
+    catGridLine: (catScale.display === false || catScale.grid?.display === false) ? { style: 'none' } : undefined,
     ...(catFont.family && { catAxisLabelFontFace: catFont.family }),
     ...(catFont.size && { catAxisLabelFontSize: catFont.size * FONT_SCALE_FACTOR }),
     ...(catColor && { catAxisLabelColor: catColor }),
