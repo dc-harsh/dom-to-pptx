@@ -15,9 +15,15 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
   const type = config.type;
   const isHorizontal = config.options?.indexAxis === 'y';
 
+  // A Chart.js line chart with fill on any dataset is an area chart in PPTX terms.
+  const datasets = config.data?.datasets || [];
+  const isAreaLine =
+    type === 'line' &&
+    datasets.some((ds) => ds.fill !== undefined && ds.fill !== false && ds.fill !== null);
+
   const TYPE_MAP = {
     bar: pptx.charts.BAR,
-    line: pptx.charts.LINE,
+    line: isAreaLine ? pptx.charts.AREA : pptx.charts.LINE,
     pie: pptx.charts.PIE,
     doughnut: pptx.charts.DOUGHNUT,
     radar: pptx.charts.RADAR,
@@ -26,7 +32,6 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
   const chartType = TYPE_MAP[type];
   if (!chartType) return null;
 
-  const datasets = config.data?.datasets || [];
   const labels = config.data?.labels || [];
 
   const isPielike = type === 'pie' || type === 'doughnut';
@@ -86,8 +91,27 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
   const chartOptions = {
     x, y, w, h,
     ...(type === 'bar' && { barDir: isHorizontal ? 'bar' : 'col' }),
+    ...(isAreaLine && valScale.stacked && { barGrouping: 'stacked' }),
+    // barGapWidthPct: derived from Chart.js categoryPercentage / barPercentage.
+    // Check both dataset-level and options.datasets.bar level; dataset takes precedence.
+    ...(type === 'bar' && (() => {
+      const dsBar = opts.datasets?.bar || {};
+      const ds0 = datasets[0] || {};
+      const catPct = ds0.categoryPercentage ?? dsBar.categoryPercentage;
+      const barPct = ds0.barPercentage ?? dsBar.barPercentage;
+      if (catPct === undefined && barPct === undefined) return {};
+      const fill = (barPct ?? 0.9) * (catPct ?? 0.8);
+      return { barGapWidthPct: Math.round((1 - fill) / fill * 100) };
+    })()),
     ...(colors.length > 0 && { chartColors: colors }),
-    valGridLine: valScale.grid?.display === false ? { style: 'none' } : undefined,
+    valGridLine: valScale.grid?.display === false
+      ? { style: 'none' }
+      : valScale.grid?.color || valScale.grid?.lineWidth
+        ? {
+            color: toHex(valScale.grid.color) || '888888',
+            size: valScale.grid.lineWidth ? Math.max(0.25, valScale.grid.lineWidth * 0.75) : 1,
+          }
+        : undefined,
     catGridLine: catScale.grid?.display === false ? { style: 'none' } : undefined,
     ...(catFont.family && { catAxisLabelFontFace: catFont.family }),
     ...(catFont.size && { catAxisLabelFontSize: catFont.size * FONT_SCALE_FACTOR }),
@@ -95,15 +119,24 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
     ...(valFont.family && { valAxisLabelFontFace: valFont.family }),
     ...(valFont.size && { valAxisLabelFontSize: valFont.size * FONT_SCALE_FACTOR }),
     ...(valColor && { valAxisLabelColor: valColor }),
-    ...(valScale.min !== undefined && { valAxisMinVal: valScale.min }),
+    // beginAtZero on either axis sets the floor to 0 when no explicit min is provided
+    ...(() => {
+      const minVal = valScale.min !== undefined
+        ? valScale.min
+        : (valScale.beginAtZero || catScale.beginAtZero) ? 0 : undefined;
+      return minVal !== undefined ? { valAxisMinVal: minVal } : {};
+    })(),
     ...(valScale.max !== undefined && { valAxisMaxVal: valScale.max }),
-    // beginAtZero may be on either scale axis depending on how the Chart.js config is authored
-    // ...((valScale.beginAtZero || catScale.beginAtZero) && { valAxisMinVal: 0 }),
     showLegend: plugins.legend?.display !== false,
     showValue: plugins.datalabels?.display === true,
     chartArea: { fill: { color: 'FFFFFF' } },
     plotArea: { fill: { color: 'FFFFFF' } },
   };
 
-  return { type: 'chart', zIndex, domOrder, chartType, chartData, options: chartOptions };
+  // PptxGenJS only emits crossBetween="midCat" (no gap at axis edge) for SCATTER or combo
+  // charts that include AREA. When Chart.js sets x.offset=false we want midCat, so wrap
+  // the area chart in the combo-array API to trigger that code path.
+  const useComboFormat = isAreaLine && catScale.offset === false;
+
+  return { type: 'chart', zIndex, domOrder, chartType, chartData, options: chartOptions, useComboFormat };
 }

@@ -487,5 +487,27 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
     }
   }
 
+  // ── CSS pseudo-elements (::before / ::after) ───────────────────────────────
+  // Empty elements (e.g. <div class="bullet-mark">) can carry their entire visual
+  // content via CSS ::before / ::after. Capture that content as a text run.
+  if (!textPayload) {
+    for (const pseudo of ['::before', '::after']) {
+      const pStyle = window.getComputedStyle(node, pseudo);
+      const raw = pStyle.content;
+      if (!raw || raw === 'none' || raw === 'normal' || raw === '""' || raw === "''") continue;
+      // CSS content strings are quoted: "\"●\"" → "●"
+      const text = raw.replace(/^["']|["']$/g, '');
+      if (!text) continue;
+      const textOpts = getTextStyle(pStyle, config.scale);
+      items.push({
+        type: 'text',
+        zIndex: zIndex + 1,
+        domOrder,
+        textParts: [{ text, options: textOpts }],
+        options: { x, y, w, h, margin: 0, autoFit: true, align: 'center', valign: 'middle' },
+      });
+    }
+  }
+
   return { items, stopRecursion: !!textPayload };
 }

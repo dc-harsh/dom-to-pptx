@@ -166,7 +166,14 @@ async function processSlide(root, slide, pptx, globalOptions = {}) {
   for (const item of finalQueue) {
     if (item.type === 'shape') slide.addShape(item.shapeType, item.options);
     if (item.type === 'image') slide.addImage(item.options);
-    if (item.type === 'chart') slide.addChart(item.chartType, item.chartData, item.options);
+    if (item.type === 'chart') {
+      if (item.useComboFormat) {
+        // Combo-array API triggers crossBetween="midCat" in PptxGenJS for area charts
+        slide.addChart([{ type: item.chartType, data: item.chartData }], item.options);
+      } else {
+        slide.addChart(item.chartType, item.chartData, item.options);
+      }
+    }
     if (item.type === 'text') slide.addText(item.textParts, item.options);
     if (item.type === 'table') {
       slide.addTable(item.tableData.rows, {
