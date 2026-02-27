@@ -2,6 +2,22 @@
 import { parseColor, FONT_SCALE_FACTOR } from './utils.js';
 
 /**
+ * Converts a serialised Chart.js datalabels formatter string to an OOXML number format code.
+ * Handles the common patterns:  value.toFixed(n)  and  + "%" / + '%'  suffix.
+ * Returns null when the pattern is not recognised (caller keeps the default).
+ */
+function formatterToFormatCode(formatter) {
+  if (!formatter || typeof formatter !== 'string') return null;
+  const toFixedMatch = formatter.match(/\.toFixed\((\d+)\)/);
+  const decimals = toFixedMatch ? parseInt(toFixedMatch[1], 10) : null;
+  const hasPct = /\+\s*['"`]%['"`]/.test(formatter);
+  if (decimals === null && !hasPct) return null;
+  const numPart = decimals === null ? '#,##0' : (decimals === 0 ? '0' : '0.' + '0'.repeat(decimals));
+  // OOXML literal suffix: enclose in double-quotes inside the format string
+  return numPart + (hasPct ? '"%"' : '');
+}
+
+/**
  * Maps a Chart.js config object to a PptxGenJS native chart render item.
  * Returns null if the chart type is unsupported (caller should fall back to image).
  *
@@ -100,7 +116,7 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
       const catPct = ds0.categoryPercentage ?? dsBar.categoryPercentage;
       const barPct = ds0.barPercentage ?? dsBar.barPercentage;
       if (catPct === undefined && barPct === undefined) return {};
-      const fill = (barPct ?? 0.9) * (catPct ?? 0.8);
+      const fill = (barPct ?? 1.0) * (catPct ?? 0.8);
       return { barGapWidthPct: Math.round((1 - fill) / fill * 100) };
     })()),
     ...(colors.length > 0 && { chartColors: colors }),
@@ -132,6 +148,21 @@ export function buildChartItem(config, pptx, zIndex, domOrder, x, y, w, h) {
     ...(valScale.max !== undefined && { valAxisMaxVal: valScale.max }),
     showLegend: plugins.legend?.display !== false,
     showValue: plugins.datalabels?.display === true,
+    // datalabels text formatting: color, font, and number format from formatter string
+    ...(plugins.datalabels?.display === true && (() => {
+      const dl = plugins.datalabels;
+      const result = {};
+      const dlColor = toHex(dl.color);
+      if (dlColor) result.dataLabelColor = dlColor;
+      if (dl.font?.size) result.dataLabelFontSize = Math.round(dl.font.size * FONT_SCALE_FACTOR);
+      if (dl.font?.weight === 'bold') result.dataLabelFontBold = true;
+      if (dl.font?.family) result.dataLabelFontFace = dl.font.family;
+      const fmtCode = formatterToFormatCode(
+        typeof dl.formatter === 'string' ? dl.formatter : null
+      );
+      if (fmtCode) result.dataLabelFormatCode = fmtCode;
+      return result;
+    })()),
     chartArea: { fill: { color: 'FFFFFF' } },
     plotArea: { fill: { color: 'FFFFFF' } },
   };

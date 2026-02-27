@@ -8,8 +8,6 @@ import { prepareRenderItem } from './element-renderer.js';
 
 const PptxGenJS = PptxGenJSImport?.default ?? PptxGenJSImport;
 
-const PPTX_WIDTH_IN = 10;
-const PPTX_HEIGHT_IN = 5.625;
 
 /**
  * Converts one or more HTML elements into a .pptx file.
@@ -38,9 +36,21 @@ export async function exportToPptx(target, options = {}) {
   if (!PptxConstructor) throw new Error('PptxGenJS constructor not found.');
 
   const pptx = new PptxConstructor();
-  pptx.layout = 'LAYOUT_16x9';
 
   const elements = Array.isArray(target) ? target : [target];
+
+  // Set slide dimensions to match the first element so scale = 1
+  const firstEl = elements[0];
+  const firstRoot = typeof firstEl === 'string' ? document.querySelector(firstEl) : firstEl;
+  if (firstRoot) {
+    const rect = firstRoot.getBoundingClientRect();
+    const w = Math.round((rect.width * PX_TO_INCH) * 1000) / 1000;
+    const h = Math.round((rect.height * PX_TO_INCH) * 1000) / 1000;
+    pptx.defineLayout({ name: 'Custom', width: w, height: h });
+    pptx.layout = 'Custom';
+  } else {
+    pptx.layout = 'LAYOUT_16x9';
+  }
 
   for (const el of elements) {
     const root = typeof el === 'string' ? document.querySelector(el) : el;
@@ -111,16 +121,14 @@ export async function exportToPptx(target, options = {}) {
  */
 async function processSlide(root, slide, pptx, globalOptions = {}) {
   const rootRect = root.getBoundingClientRect();
-  const contentWidthIn = rootRect.width * PX_TO_INCH;
-  const contentHeightIn = rootRect.height * PX_TO_INCH;
-  const scale = Math.min(PPTX_WIDTH_IN / contentWidthIn, PPTX_HEIGHT_IN / contentHeightIn);
+  const scale = 1;
 
   const layoutConfig = {
     rootX: rootRect.x,
     rootY: rootRect.y,
     scale,
-    offX: (PPTX_WIDTH_IN - contentWidthIn * scale) / 2,
-    offY: (PPTX_HEIGHT_IN - contentHeightIn * scale) / 2,
+    offX: 0,
+    offY: 0,
     root,
   };
 
