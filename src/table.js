@@ -157,8 +157,8 @@ export function extractTableData(node, scale) {
         if (cellListEl) {
           const runs = extractCellListRuns(cell, scale);
           cellText = runs.length > 0 ? runs : '';
-        } else if (anchor) {
-          // Hyperlink: single run with link styling
+        } else if (anchor && (cell.innerText || '').trim() === anchor.innerText.trim()) {
+          // Hyperlink: anchor IS the entire cell content — single run with link styling
           const anchorColor = parseColor(window.getComputedStyle(anchor).color);
           if (anchorColor.hex) textStyle.color = anchorColor.hex;
           textStyle.underline = textStyle.underline || window.getComputedStyle(anchor).textDecoration.includes('underline');
