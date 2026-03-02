@@ -2,6 +2,7 @@
 import { parseColor } from './color.js';
 import { getTextStyle, getPadding } from './style.js';
 import { FONT_SCALE_FACTOR } from './constants.js';
+import { collectListParts, collectLiDirectParts } from './inline-runs.js';
 
 /**
  * Extracts a list (UL/OL) inside a table cell as an array of PptxGenJS text run objects
@@ -44,28 +45,22 @@ function extractCellListRuns(cell, scale) {
       const markerFs = parseFloat(markerStyle.fontSize);
       if (!isNaN(markerFs) && markerFs > 0) bullet.fontSize = markerFs * FONT_SCALE_FACTOR * scale;
 
-      // Collect direct text only (skip nested UL/OL — handled by recursion below)
-      let directText = '';
-      li.childNodes.forEach((child) => {
-        if (child.nodeType === 3) {
-          directText += child.textContent;
-        } else if (child.nodeType === 1 && child.tagName !== 'UL' && child.tagName !== 'OL') {
-          directText += child.innerText || child.textContent;
-        }
-      });
-      directText = directText.replace(/[\n\r\t]+/g, ' ').trim();
+      // Collect inline runs preserving per-element styles (bold, color, etc.)
+      // First run gets bullet + indentLevel (paragraph-level); subsequent runs are
+      // character-only so PptxGenJS does not emit a conflicting <a:pPr>.
+      const itemRuns = collectLiDirectParts(li, liStyle, scale);
 
-      if (directText) {
-        // Single run per paragraph: bullet + text in one options object → one <a:pPr> → no conflict.
-        runs.push({
-          text: directText,
-          options: {
-            ...liTextStyle,
-            bullet,
-            ...(depth > 0 && { indentLevel: depth }),
-            breakLine: true,
-          },
-        });
+      if (itemRuns.length > 0) {
+        itemRuns[0].options = {
+          ...itemRuns[0].options,
+          bullet,
+          ...(depth > 0 && { indentLevel: depth }),
+        };
+        itemRuns[itemRuns.length - 1].options = {
+          ...itemRuns[itemRuns.length - 1].options,
+          breakLine: true,
+        };
+        runs.push(...itemRuns);
       }
 
       // Recurse into nested lists
@@ -146,8 +141,10 @@ export function extractTableData(node, scale) {
       .forEach((cell) => {
         const style = window.getComputedStyle(cell);
 
-        // Read text style from the innermost meaningful child (span or anchor)
-        // so CSS class rules on child elements take precedence over inherited cell styles
+        // Walk down to the deepest single-child element so computed styles on
+        // nested elements like <b> take precedence over ancestor class styles.
+        // e.g. <td><span.t4><b>Market Size</b></span></td> → styleSource = <b>
+        // Use first span/anchor child as cell-level default style (font, size, base color)
         const anchor = cell.querySelector('a[href]');
         const styleSource = anchor || cell.querySelector('span') || cell;
         const textStyle = getTextStyle(window.getComputedStyle(styleSource), scale);
@@ -160,18 +157,18 @@ export function extractTableData(node, scale) {
         if (cellListEl) {
           const runs = extractCellListRuns(cell, scale);
           cellText = runs.length > 0 ? runs : '';
+        } else if (anchor) {
+          // Hyperlink: single run with link styling
+          const anchorColor = parseColor(window.getComputedStyle(anchor).color);
+          if (anchorColor.hex) textStyle.color = anchorColor.hex;
+          textStyle.underline = textStyle.underline || window.getComputedStyle(anchor).textDecoration.includes('underline');
+          const href = anchor.getAttribute('href');
+          if (href) hyperlinkData = { url: href };
+          cellText = anchor.innerText.replace(/[\n\r\t]+/g, ' ').trim();
         } else {
-          // Hyperlink handling (no list)
-          cellText = cell.innerText.replace(/[\n\r\t]+/g, ' ').trim();
-          if (anchor) {
-            const anchorColor = parseColor(window.getComputedStyle(anchor).color);
-            if (anchorColor.hex) textStyle.color = anchorColor.hex;
-            textStyle.underline = textStyle.underline || window.getComputedStyle(anchor).textDecoration.includes('underline');
-            const href = anchor.getAttribute('href');
-            if (href) hyperlinkData = { url: href };
-            const anchorText = anchor.innerText.replace(/[\n\r\t]+/g, ' ').trim();
-            if (anchorText) cellText = anchorText;
-          }
+          // Use inline runs to preserve per-element bold/color/italic within cell text
+          const runs = collectListParts(cell, window.getComputedStyle(cell), scale);
+          cellText = runs.length > 0 ? runs : '';
         }
 
         // Cell background — walk up to tr/thead/tbody if cell itself is transparent
