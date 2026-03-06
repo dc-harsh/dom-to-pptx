@@ -181,7 +181,7 @@ export function isTextContainer(node) {
 
   const isSafeInline = (el) => {
     if (el.tagName.includes('-')) return false;
-    if (el.tagName === 'IMG' || el.tagName === 'SVG') return false;
+    if (el.tagName === 'IMG' || el.tagName.toUpperCase() === 'SVG') return false;
 
     if (el.tagName === 'I' || el.tagName === 'SPAN') {
       const cls = el.getAttribute('class') || '';

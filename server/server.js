@@ -236,6 +236,11 @@ class Converter {
       }
 
       await page.waitForTimeout(100);
+      await page.waitForFunction(() => {
+        const divs = Array.from(document.querySelectorAll('.mermaid'));
+        if (divs.length === 0) return true;
+        return divs.every(el => el.querySelector('svg') !== null);
+      }, { timeout: 15000 }).catch(() => { /* timed out — continue */ });
 
       await page.evaluate((script) => {
         const el = document.createElement('script');

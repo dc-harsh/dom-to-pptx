@@ -239,6 +239,17 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
     return { items: [item], job, stopRecursion: true };
   }
 
+  // ── MERMAID diagrams — capture container as PNG via html2canvas ────────────
+  if (node.classList && node.classList.contains('mermaid') && node.querySelector('svg')) {
+    const item = { type: 'image', zIndex, domOrder, options: { x, y, w, h, rotate: rotation, data: null } };
+    const job = async () => {
+      const pngData = await elementToCanvasImage(node, widthPx, heightPx);
+      if (pngData) item.options.data = pngData;
+      else item.skip = true;
+    };
+    return { items: [item], job, stopRecursion: true };
+  }
+
   // ── ICON ELEMENTS (FontAwesome, Material, etc.) ────────────────────────────
   if (isIconElement(node)) {
     const item = { type: 'image', zIndex, domOrder, options: { x, y, w, h, rotate: rotation, data: null } };
