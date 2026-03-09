@@ -290,6 +290,156 @@ class Converter {
   }
 }
 
+
+class OverflowChecker {
+  constructor(pool) {
+    this.pool = pool;
+  }
+
+  async check(options) {
+    const { html, selector, viewport } = options;
+    let browser;
+    try {
+      browser = await this.pool.acquire(CONFIG.convert.timeout);
+      return await this._doCheck(browser, { html, selector, viewport });
+    } finally {
+      if (browser) await this.pool.release(browser);
+    }
+  }
+
+  async _doCheck(browser, { html, selector, viewport }) {
+    const context = await browser.newContext({
+      viewport: viewport || CONFIG.viewport,
+    });
+    const page = await context.newPage();
+
+    try {
+      // Add this BEFORE page.evaluate() in _doCheck()
+      page.on('console', msg => console.log(`[Browser] ${msg.type()}: ${msg.text()}`));
+      page.on('pageerror', err => console.error(`[Browser Error] ${err.message}`));
+      page.setDefaultTimeout(CONFIG.convert.timeout);
+
+      
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+     
+
+      // Wait for fonts/images to settle so getBoundingClientRect() is accurate
+      await page.waitForTimeout(100);
+      await page.waitForFunction(() => document.readyState === 'complete', { timeout: 10000 })
+        .catch(() => {});
+
+      const overflowing = await page.evaluate((selector) => {
+        // ---- inline the fixed getOverflowingSlides() ----
+        console.log('Total elements in body:', document.body.children.length);
+
+        
+        function getOverflowThreshold(slide) {
+          const sourceElement = slide.querySelector('.source');
+          if (sourceElement) {
+            return sourceElement.getBoundingClientRect().top;
+          }
+          const slideRect = slide.getBoundingClientRect();
+          const paddingBottom = parseFloat(window.getComputedStyle(slide).paddingBottom) || 0;
+          return slideRect.bottom - paddingBottom;
+        }
+
+        function hasSignificantTextContent(element) {
+          const text = element.textContent.trim();
+          if (element.tagName === 'TABLE' || element.querySelector('table')) {
+            return text.length > 10;
+          }
+          return text.length > 10 && !element.querySelector('canvas, img');
+        }
+
+        function getContentArea(slide) {
+          return slide.querySelector(':scope > .slide-content-area') || slide;
+        }
+
+        function getOverflowingElements(slide, slideIndex) {
+          const overflowThreshold = getOverflowThreshold(slide);
+          const overflowingElements = [];
+
+          const contentArea = getContentArea(slide);
+          const allElements = Array.from(contentArea.children);
+
+          const slideRect = slide.getBoundingClientRect();
+          const slideStyle = window.getComputedStyle(slide);
+          const paddingTop = parseFloat(slideStyle.paddingTop) || 0;
+          const paddingBottom = parseFloat(slideStyle.paddingBottom) || 0;
+          const contentAreaHeight = slideRect.height - paddingTop - paddingBottom;
+          const tableThresholdRatio = 0.95;
+          
+          console.log(`Slide ${slideIndex} (id=${slide.id}): rect =`, 
+            JSON.stringify({ top: slideRect.top, bottom: slideRect.bottom, height: slideRect.height }));
+        
+
+          for (const element of allElements) {
+            if (element.classList.contains('title') || element.classList.contains('source')) {
+              continue;
+            }
+
+            const elementRect = element.getBoundingClientRect();
+              
+            if (
+              elementRect.bottom > overflowThreshold &&
+              (
+                element.querySelector('table') ||
+                element.tagName === 'TABLE' ||
+                hasSignificantTextContent(element)
+              )
+            ) {
+              overflowingElements.push({
+                id: element.id,
+                className: element.className,
+                tagName: element.tagName,
+                type: 'overflow',
+                slideIndex,
+                slideId: slide.id,
+                bottom: elementRect.bottom,
+                threshold: overflowThreshold,
+              });
+            } else if (element.querySelector('table') || element.tagName === 'TABLE') {
+              const tableElement = element.querySelector('table') || element;
+              const tableHeight = tableElement.getBoundingClientRect().height;
+              if (tableHeight >= contentAreaHeight * tableThresholdRatio) {
+                overflowingElements.push({
+                  id: element.id,
+                  className: element.className,
+                  tagName: element.tagName,
+                  type: element.querySelector('table') ? 'table_container' : 'table',
+                  slideIndex,
+                  slideId: slide.id,
+                });
+              }
+            }
+          }
+
+          return overflowingElements;
+        }
+
+        const slides = document.querySelectorAll(selector);
+        console.log('Slides found:', slides.length, 'using selector:', selector);
+        return Array.from(slides).map((slide, slideIndex) => ({
+            slideIndex,
+            slideId: slide.id,
+            slideClass: slide.className,
+            attributes: Array.from(slide.attributes).reduce((acc, attr) => {
+                acc[attr.name] = attr.value;
+                return acc;
+            }, {}),
+            overflowingElements: getOverflowingElements(slide, slideIndex),
+        }));
+
+      }, selector);
+
+      return { overflowing };
+
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }
+}
+
 // ============== HTTP Helpers ==============
 function parseBody(req) {
   return new Promise((resolve, reject) => {
@@ -410,6 +560,7 @@ async function startServer() {
   await pool.init();
 
   const converter = new Converter(pool);
+  const overflowChecker = new OverflowChecker(pool);
   const startTime = Date.now();
 
   const server = http.createServer(async (req, res) => {
@@ -510,6 +661,33 @@ async function startServer() {
           || 'output.pptx';
 
         sendBinary(res, Buffer.from(result.data, 'base64'), filename);
+        return;
+      }
+
+      if (pathname === '/check-overflow' && req.method === 'POST') {
+        if (!(req.headers['content-type'] || '').includes('multipart/form-data')) {
+          sendJson(res, 400, { error: 'Content-Type must be multipart/form-data' });
+          return;
+        }
+
+        const { fields, files } = await parseMultipart(req);
+        const htmlFile = files.find(f => f.name === 'file' || f.name === 'html');
+        if (!htmlFile) {
+          sendJson(res, 400, { error: 'Missing file. Use "file" or "html" as the field name.' });
+          return;
+        }
+
+        let viewport;
+        if (fields.viewport) {
+          try { viewport = JSON.parse(fields.viewport); } catch {}
+        }
+        const result = await overflowChecker.check({
+          html: htmlFile.data.toString('utf8'),
+          selector: fields.selector || '.slide',
+          viewport,
+        });
+
+        sendJson(res, 200, { success: true, overflowing: result.overflowing });
         return;
       }
 
