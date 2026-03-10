@@ -467,9 +467,11 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
     if (textPayload) {
       const firstRun = textPayload.text[0];
       if (firstRun?.options && !Number.isFinite(firstRun.options.fontSize)) firstRun.options.fontSize = 12;
+      const pad = textPayload.inset; // [topIn, rightIn, bottomIn, leftIn] in inches
+      const margin = pad.some(v => v > 0) ? [pad[3], pad[1], pad[2], pad[0]].map(v => v * 72) : 0;
       items.push({
         type: 'text', zIndex: zIndex + 1, domOrder, textParts: textPayload.text,
-        options: { x, y, w, h, align: textPayload.align, valign: textPayload.valign, inset: textPayload.inset, rotate: rotation, margin: 0, wrap: true, autoFit: false },
+        options: { x, y, w, h, align: textPayload.align, valign: textPayload.valign, rotate: rotation, margin, wrap: true, autoFit: false },
       });
     }
     if (hasCompositeBorder) {
@@ -532,9 +534,11 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
       if (textPayload) {
         const firstRun = textPayload.text[0];
         if (firstRun?.options && !Number.isFinite(firstRun.options.fontSize)) firstRun.options.fontSize = 12;
+        const pad = textPayload.inset; // [topIn, rightIn, bottomIn, leftIn] in inches
+        const margin = pad.some(v => v > 0) ? [pad[3], pad[1], pad[2], pad[0]].map(v => v * 72) : 0;
         items.push({
           type: 'text', zIndex, domOrder, textParts: textPayload.text,
-          options: { shape: shapeType, ...shapeOpts, rotate: rotation, align: textPayload.align, valign: textPayload.valign, inset: textPayload.inset, margin: 0, wrap: true, autoFit: false },
+          options: { shape: shapeType, ...shapeOpts, rotate: rotation, align: textPayload.align, valign: textPayload.valign, margin, wrap: true, autoFit: false },
         });
       } else if (!hasPartialBorderRadius) {
         items.push({ type: 'shape', zIndex, domOrder, shapeType, options: shapeOpts });

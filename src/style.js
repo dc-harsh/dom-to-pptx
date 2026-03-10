@@ -249,6 +249,9 @@ export function isTextContainer(node) {
     const style = window.getComputedStyle(el);
     const isInlineTag = ['SPAN', 'B', 'STRONG', 'EM', 'I', 'A', 'SMALL', 'MARK'].includes(el.tagName);
     if (!isInlineTag && !style.display.includes('inline')) return false;
+    // Inline tags (e.g. SPAN) explicitly set to a block-level layout are not safe inline —
+    // they have their own box model (padding, flex alignment) and must render as separate elements.
+    if (isInlineTag && (style.display === 'flex' || style.display === 'grid' || style.display === 'block' || style.display === 'table')) return false;
 
     // Empty visual objects (dot separators, decorative badges with no text)
     const bgColor = parseColor(style.backgroundColor);
