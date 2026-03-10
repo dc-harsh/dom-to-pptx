@@ -108,14 +108,19 @@ export function getFilterShadow(filterStr, scale) {
   const dist = Math.hypot(x, y);
   const colorObj = parseColor(colorStr);
 
-  // Zero-offset drop-shadow → centered uniform shadow (algn="ctr", sx/sy=106%)
+  // CSS blur is Gaussian σ in px. OOXML blurRad maps to the visible extent (~3σ),
+  // so the correct multiplier is 3× (not 0.75×) to match visual weight.
+  // Reference: CSS drop-shadow(0 0 10px) → 10×3 = 30pt ≈ PowerPoint "Outside: Center" preset.
+  const blurPt = blur * 3 * scale;
+
+  // Zero-offset drop-shadow → centered uniform shadow (algn="ctr", sx/sy=100%)
   // Matches PowerPoint "Outside: Center" preset; avoids algn="bl" top-left bias.
   if (dist === 0) {
     return {
       type: 'outer',
       algn: 'ctr',
-      size: 106,
-      blur: blur * 0.75 * scale,
+      size: 100,
+      blur: blurPt,
       offset: 0,
       angle: 0,
       color: colorObj.hex || '000000',
@@ -128,7 +133,7 @@ export function getFilterShadow(filterStr, scale) {
   return {
     type: 'outer',
     angle,
-    blur: blur * 0.75 * scale,
+    blur: blurPt,
     offset: dist * 0.75 * scale,
     color: colorObj.hex || '000000',
     opacity: colorObj.opacity,
