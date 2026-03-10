@@ -262,6 +262,24 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
     return { items: [item], job, stopRecursion: true };
   }
 
+  // ── CSS background-image: url(...) on empty element → raster capture ────────
+  // Handles elements like <div class="logo" style="background-image:url(...)">
+  // that have no children/text and rely entirely on a CSS background URL.
+  if (
+    style.backgroundImage &&
+    style.backgroundImage.startsWith('url(') &&
+    node.children.length === 0 &&
+    !node.textContent.trim()
+  ) {
+    const item = { type: 'image', zIndex, domOrder, options: { x, y, w, h, rotate: rotation, data: null } };
+    const job = async () => {
+      const img = await elementToCanvasImage(node, widthPx, heightPx);
+      if (img) item.options.data = img;
+      else item.skip = true;
+    };
+    return { items: [item], job, stopRecursion: true };
+  }
+
   // ── Border radius helpers ──────────────────────────────────────────────────
   const borderRadiusValue = parseFloat(style.borderRadius) || 0;
   const borderBottomLeftRadius = parseFloat(style.borderBottomLeftRadius) || 0;
