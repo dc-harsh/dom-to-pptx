@@ -20,6 +20,7 @@ export {
 export {
   getBorderInfo,
   getVisibleShadow,
+  getFilterShadow,
   getTextStyle,
   getPadding,
   getSoftEdges,

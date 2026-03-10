@@ -1,5 +1,5 @@
 // src/index.js
-import * as PptxGenJSImport from 'pptxgenjs';
+import * as PptxGenJSImport from './vendor/pptxgen.cjs.js';
 import { PPTXEmbedFonts } from './font-embedder.js';
 import JSZip from 'jszip';
 import { parseColor, getUsedFontFamilies, getAutoDetectedFonts } from './utils.js';

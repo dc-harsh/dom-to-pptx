@@ -4,6 +4,7 @@ import {
   getTextStyle,
   isTextContainer,
   getVisibleShadow,
+  getFilterShadow,
   generateGradientSVG,
   getRotation,
   svgToPng,
@@ -320,7 +321,24 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
 
   const shadowStr = style.boxShadow;
   const hasShadow = shadowStr && shadowStr !== 'none';
-  const softEdge = getSoftEdges(style.filter, config.scale);
+  const filterStr = style.filter;
+  const hasFilterShadow = !hasShadow && filterStr && filterStr !== 'none' && filterStr.includes('drop-shadow');
+  const softEdge = getSoftEdges(filterStr, config.scale);
+
+  // When drop-shadow filter is on a transparent container whose fill comes from
+  // a full-coverage SVG child (the ppt-shape pattern), extract that SVG path fill
+  // so the shadow renders against a filled shape instead of a transparent one.
+  // PowerPoint only casts shadows from shapes that have visual content.
+  let shadowFillOverride = null;
+  if (hasFilterShadow && !bgColorObj.hex) {
+    const svgChild = Array.from(node.children).find(c =>
+      c.nodeName.toUpperCase() === 'SVG' && window.getComputedStyle(c).position === 'absolute'
+    );
+    if (svgChild) {
+      const pathEl = svgChild.querySelector('path[fill]');
+      if (pathEl) shadowFillOverride = parseColor(pathEl.getAttribute('fill'));
+    }
+  }
 
   let isImageWrapper = false;
   const imgChild = Array.from(node.children).find((c) => c.tagName === 'IMG');
@@ -439,10 +457,11 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
     if (hasCompositeBorder) {
       items.push(...createCompositeBorderItems(borderInfo.sides, x, y, w, h, config.scale, zIndex, domOrder));
     }
-  } else if ((bgColorObj.hex && !isImageWrapper) || hasUniformBorder || hasCompositeBorder || hasShadow || textPayload) {
-    const finalAlpha = safeOpacity * bgColorObj.opacity;
+  } else if ((bgColorObj.hex && !isImageWrapper) || hasUniformBorder || hasCompositeBorder || hasShadow || hasFilterShadow || textPayload) {
+    const effectiveBg = bgColorObj.hex ? bgColorObj : shadowFillOverride;
+    const finalAlpha = safeOpacity * (effectiveBg ? effectiveBg.opacity : 0);
     const transparency = (1 - finalAlpha) * 100;
-    const useSolidFill = bgColorObj.hex && !isImageWrapper;
+    const useSolidFill = !!(effectiveBg?.hex && !isImageWrapper);
 
     if (hasPartialBorderRadius && useSolidFill && !textPayload) {
       const shapeSvg = generateCustomShapeSVG(widthPx, heightPx, bgColorObj.hex, bgColorObj.opacity, {
@@ -455,10 +474,24 @@ export function prepareRenderItem(node, config, domOrder, pptx, effectiveZIndex,
     } else {
       const shapeOpts = {
         x, y, w, h, rotate: rotation,
-        fill: useSolidFill ? { color: bgColorObj.hex, transparency } : { type: 'none' },
+        fill: useSolidFill ? { color: effectiveBg.hex, transparency } : { type: 'none' },
         line: hasUniformBorder ? borderInfo.options : null,
       };
       if (hasShadow) shapeOpts.shadow = getVisibleShadow(shadowStr, config.scale);
+      else if (hasFilterShadow) {
+        const shadowObj = getFilterShadow(filterStr, config.scale);
+        if (shadowObj) {
+          // HTML creators can set data-shadow-align="tl|t|tr|l|ctr|r|bl|b|br"
+          // and data-shadow-type="outer|inner" to control OOXML shadow attributes.
+          const VALID_ALIGNS = new Set(['tl', 't', 'tr', 'l', 'ctr', 'r', 'bl', 'b', 'br']);
+          if (node.dataset.shadowAlign && VALID_ALIGNS.has(node.dataset.shadowAlign)) {
+            shadowObj.algn = node.dataset.shadowAlign;
+            if (shadowObj.algn !== 'ctr') delete shadowObj.size;
+          }
+          if (node.dataset.shadowType === 'inner') shadowObj.type = 'inner';
+          shapeOpts.shadow = shadowObj;
+        }
+      }
 
       const minDimension = Math.min(widthPx, heightPx);
       let rawRadius = parseFloat(style.borderRadius) || 0;

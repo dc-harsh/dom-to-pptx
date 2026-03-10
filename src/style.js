@@ -85,6 +85,56 @@ export function getVisibleShadow(shadowStr, scale) {
   return null;
 }
 
+/**
+ * Parses a CSS filter string containing drop-shadow() and returns a PptxGenJS
+ * shadow descriptor, or null if none found.
+ * Handles both color-first and color-last forms produced by browser computed styles.
+ */
+export function getFilterShadow(filterStr, scale) {
+  if (!filterStr || filterStr === 'none') return null;
+  const dsMatch = filterStr.match(/drop-shadow\(((?:[^()]+|\([^()]*\))*)\)/);
+  if (!dsMatch) return null;
+
+  const inner = dsMatch[1].trim();
+  const colorMatch = inner.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})/);
+  const colorStr = colorMatch ? colorMatch[1] : 'rgb(0,0,0)';
+  const withoutColor = inner.replace(colorStr, '').trim();
+  const parts = withoutColor.split(/\s+/).filter(Boolean);
+
+  const x = Number.parseFloat(parts[0]) || 0;
+  const y = Number.parseFloat(parts[1]) || 0;
+  const blur = Number.parseFloat(parts[2]) || 0;
+
+  const dist = Math.hypot(x, y);
+  const colorObj = parseColor(colorStr);
+
+  // Zero-offset drop-shadow → centered uniform shadow (algn="ctr", sx/sy=106%)
+  // Matches PowerPoint "Outside: Center" preset; avoids algn="bl" top-left bias.
+  if (dist === 0) {
+    return {
+      type: 'outer',
+      algn: 'ctr',
+      size: 106,
+      blur: blur * 0.75 * scale,
+      offset: 0,
+      angle: 0,
+      color: colorObj.hex || '000000',
+      opacity: colorObj.opacity,
+    };
+  }
+
+  let angle = Math.atan2(y, x) * (180 / Math.PI);
+  if (angle < 0) angle += 360;
+  return {
+    type: 'outer',
+    angle,
+    blur: blur * 0.75 * scale,
+    offset: dist * 0.75 * scale,
+    color: colorObj.hex || '000000',
+    opacity: colorObj.opacity,
+  };
+}
+
 // ── Text ───────────────────────────────────────────────────────────────────
 
 /**
