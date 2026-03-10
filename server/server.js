@@ -240,7 +240,7 @@ class Converter {
         const divs = Array.from(document.querySelectorAll('.mermaid'));
         if (divs.length === 0) return true;
         return divs.every(el => el.querySelector('svg') !== null);
-      }, { timeout: 15000 }).catch(() => { /* timed out — continue */ });
+      }, { timeout: 5000 }).catch(() => { /* timed out — continue */ });
 
       await page.evaluate((script) => {
         const el = document.createElement('script');
@@ -318,20 +318,14 @@ class OverflowChecker {
       page.setDefaultTimeout(CONFIG.convert.timeout);
 
       
-      await page.setContent(html, { waitUntil: 'networkidle' });
-
-      if (html.includes('mermaid')) {
-        await page.waitForFunction(() => {
-          const divs = Array.from(document.querySelectorAll('.mermaid'));
-          return divs.length === 0 || divs.every(el => el.querySelector('svg') !== null);
-        }, { timeout: 15000 }).catch(() => {});
+      if (html) {
+        await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      } else {
+        throw new Error('Missing html or url parameter');
       }
 
-      await page.evaluate(() => document.fonts.ready);
-
+      await page.waitForTimeout(100);
       const overflowing = await page.evaluate((selector) => {
-
-        
         function getOverflowThreshold(slide) {
           const sourceElement = slide.querySelector('.source');
           if (sourceElement) {
