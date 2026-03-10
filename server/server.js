@@ -314,23 +314,22 @@ class OverflowChecker {
     const page = await context.newPage();
 
     try {
-      // Add this BEFORE page.evaluate() in _doCheck()
-      page.on('console', msg => console.log(`[Browser] ${msg.type()}: ${msg.text()}`));
       page.on('pageerror', err => console.error(`[Browser Error] ${err.message}`));
       page.setDefaultTimeout(CONFIG.convert.timeout);
 
       
-      await page.setContent(html, { waitUntil: 'domcontentloaded' });
-     
+      await page.setContent(html, { waitUntil: 'networkidle' });
 
-      // Wait for fonts/images to settle so getBoundingClientRect() is accurate
-      await page.waitForTimeout(100);
-      await page.waitForFunction(() => document.readyState === 'complete', { timeout: 10000 })
-        .catch(() => {});
+      if (html.includes('mermaid')) {
+        await page.waitForFunction(() => {
+          const divs = Array.from(document.querySelectorAll('.mermaid'));
+          return divs.length === 0 || divs.every(el => el.querySelector('svg') !== null);
+        }, { timeout: 15000 }).catch(() => {});
+      }
+
+      await page.evaluate(() => document.fonts.ready);
 
       const overflowing = await page.evaluate((selector) => {
-        // ---- inline the fixed getOverflowingSlides() ----
-        console.log('Total elements in body:', document.body.children.length);
 
         
         function getOverflowThreshold(slide) {
@@ -369,9 +368,7 @@ class OverflowChecker {
           const contentAreaHeight = slideRect.height - paddingTop - paddingBottom;
           const tableThresholdRatio = 0.95;
           
-          console.log(`Slide ${slideIndex} (id=${slide.id}): rect =`, 
-            JSON.stringify({ top: slideRect.top, bottom: slideRect.bottom, height: slideRect.height }));
-        
+ 
 
           for (const element of allElements) {
             if (element.classList.contains('title') || element.classList.contains('source')) {
@@ -418,7 +415,6 @@ class OverflowChecker {
         }
 
         const slides = document.querySelectorAll(selector);
-        console.log('Slides found:', slides.length, 'using selector:', selector);
         return Array.from(slides).map((slide, slideIndex) => ({
             slideIndex,
             slideId: slide.id,
